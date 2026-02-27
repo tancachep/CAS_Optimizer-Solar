@@ -1,0 +1,20 @@
+
+===== 16 VALUES RESULT =====
+1. PV Total (kWh): 326715
+2. PV Used by Loads (kWh): 251280
+3. PV Used by Loads (%): 76.91 %
+4. PV Curtailed (kWh): 75435
+5. PV Curtailed (%): 23.09 %
+6. Grid (kWh): 287791
+7. Load Consumption (kWh): 539071
+8. Loss Percent (%): 0.00 % (Standard assumption)
+
+9. PV Used - Giờ BT (kWh): 187946
+10. PV Used - Giờ BT (%): 74.80 %
+11. PV Used - Giờ CĐ (kWh): 63334
+12. PV Used - Giờ CĐ (%): 25.20 %
+13. PV Cur - Giờ BT (kWh): 64584
+14. PV Cur - Giờ BT (%): 85.61 %
+15. PV Cur - Giờ CĐ (kWh): 10852
+16. PV Cur - Giờ CĐ (%): 14.39 %
+=============================

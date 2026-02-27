@@ -37,8 +37,8 @@ export const Report = ({
             selecting: "Đang chọn",
             tech_specs_title: "Thông số Kỹ thuật chi tiết (Kịch bản hiện tại)",
             losses_title: "Chi tiết Tổn thất (System Losses Breakdown)",
-            monthly_table_title: "Bảng dữ liệu Sản lượng Solar & Tải (12 Tháng)",
-            cashflow_title: "Phân tích Dòng tiền Chi tiết",
+            monthly_table_title: "Bảng dữ liệu Sản lượng Solar & Tải (12 Tháng) (kWh)",
+            cashflow_title: "Phân tích Dòng tiền Chi tiết (VND)",
             year: "Năm",
             year_0: "Năm 0",
             capex_tooltip: "Vốn đầu tư ban đầu (CAPEX)",
@@ -66,8 +66,8 @@ export const Report = ({
             selecting: "Selected",
             tech_specs_title: "Detailed Technical Specifications (Current Scenario)",
             losses_title: "System Losses Breakdown",
-            monthly_table_title: "Monthly Solar & Load Data Table (12 Months)",
-            cashflow_title: "Detailed Cash Flow Analysis",
+            monthly_table_title: "Monthly Solar & Load Data Table (12 Months) (kWh)",
+            cashflow_title: "Detailed Cash Flow Analysis (VND)",
             year: "Year",
             year_0: "Year 0",
             capex_tooltip: "Initial Capital Expenditure (CAPEX)",
@@ -316,9 +316,9 @@ export const Report = ({
                                                     {dt.year_0}
                                                     <div className="group relative">
                                                         <Info size={12} className="text-slate-400 cursor-help" />
-                                                        <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-max px-2 py-1 bg-slate-800 text-white text-[10px] rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-sm whitespace-nowrap">
+                                                        <div className="absolute left-0 bottom-full mb-2 w-max px-2 py-1 bg-slate-800 text-white text-[10px] rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-sm whitespace-nowrap">
                                                             {dt.capex_tooltip}
-                                                            <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800"></div>
+                                                            <div className="absolute top-full left-2 border-4 border-transparent border-t-slate-800"></div>
                                                         </div>
                                                     </div>
                                                 </div>

@@ -109,6 +109,45 @@ body {
   }
 }
 
+@keyframes ekg {
+  0% {
+    transform: translateX(12px);
+    opacity: 0;
+  }
+
+  15% {
+    opacity: 1;
+  }
+
+  85% {
+    opacity: 1;
+  }
+
+  100% {
+    transform: translateX(-12px);
+    opacity: 0;
+  }
+}
+
+@keyframes scrolling-ekg {
+  0% {
+    transform: translateX(0);
+  }
+
+  100% {
+    transform: translateX(-14px);
+  }
+}
+
+.animate-scrolling-ekg {
+  animation: scrolling-ekg 0.6s linear infinite;
+}
+
+/* Force animation on group hover for the scroller */
+.group:hover .animate-scrolling-ekg-hover {
+  animation: scrolling-ekg 0.6s linear infinite;
+}
+
 .animation-delay-2000 {
   animation-delay: 2s;
 }
@@ -220,7 +259,16 @@ input[type="range"].premium-slider::-moz-range-thumb {
 
 /* Tooltip for value display on hover */
 .value-badge {
-  @apply px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+  padding-top: 0.125rem;
+  padding-bottom: 0.125rem;
+  border-radius: 0.375rem;
+  font-size: 10px;
+  font-weight: 700;
+  background-color: #f1f5f9;
+  color: #475569;
+  border: 1px solid #e2e8f0;
 }
 
 /* Perspective utilities usually handled by Tailwind plugin, but adding fallbacks */

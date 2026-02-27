@@ -28,13 +28,32 @@ export const useSolarConfiguration = (initialParams, initialTechParams) => {
     const [isGridCharge, setIsGridCharge] = useState(false);
     const [bessStrategy, setBessStrategy] = useState('self-consumption'); // 'self-consumption' | 'peak-shaving'
     const [weatherScenario, setWeatherScenario] = useState('normal'); // Weather simulation
-    const [pricingType, setPricingType] = useState('business'); // Default pricing type
+    const [pricingType, setPricingType] = useState('retail_manufacturing'); // Default pricing type
     const [voltageLevelId, setVoltageLevelId] = useState('22kv_110kv'); // Default voltage level
 
     // --- STATE PARAMETERS ---
     const [params, setParams] = useState(initialParams);
-    const [techParams, setTechParams] = useState(initialTechParams);
+    const [techParams, setTechParams] = useState({
+        ...initialTechParams,
+        weatherDerate: 1.0,
+        bessEff: 0.95, // Single way efficiency? Or round trip? Let's assume Single Way for now 0.95 * 0.95 = ~90% RT. 
+        // Actually, let's make it Round Trip in UI (0.9) and calc sqrt for calc? 
+        // Plan said "Round-trip Efficiency". Let's store "bessEffRoundTrip" = 0.90.
+        bessEffRoundTrip: 0.90,
+        bessDod: 0.90,
+        oversizingRatio: 1.25 // Default DC/AC Ratio
+    });
     const [targetKwp, setTargetKwp] = useState(0);
+
+    // Update Derate when Weather Scenario changes
+    const handleWeatherChange = (scenarioKey) => {
+        setWeatherScenario(scenarioKey);
+        const scenario = WEATHER_SCENARIOS[scenarioKey];
+        if (scenario) {
+            setTechParams(prev => ({ ...prev, weatherDerate: scenario.derate }));
+        }
+    };
+
 
 
     // Auto Select Inverter
@@ -43,7 +62,9 @@ export const useSolarConfiguration = (initialParams, initialTechParams) => {
         if (targetKwp <= 0) return;
 
         // 1. Select Inverter (DC/AC ~ 1.25)
-        const targetAC = targetKwp / 1.25;
+        // 1. Select Inverter (DC/AC ~ techParams.oversizingRatio || 1.25)
+        const ratio = techParams.oversizingRatio || 1.25;
+        const targetAC = targetKwp / ratio;
         const bestInv = INVERTER_DB.reduce((prev, curr) =>
             Math.abs(curr.acPower - targetAC) < Math.abs(prev.acPower - targetAC) ? curr : prev
         );
@@ -257,9 +278,11 @@ export const useSolarConfiguration = (initialParams, initialTechParams) => {
         handleSuggestSafeCapacity,
         bessStrategy, setBessStrategy,
         weatherScenario, setWeatherScenario,
+        handleWeatherChange,
         totalACPower,
         inverterMaxAcKw,
         pricingType, setPricingType,
         voltageLevelId, setVoltageLevelId
     };
 };
+

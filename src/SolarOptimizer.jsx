@@ -23,7 +23,7 @@ import { useFinancialModel } from './presentation/hooks/useFinancialModel';
 import { FormulaModal } from './presentation/components/FormulaModal';
 import { EVN_TARIFFS } from './data/evn_tariffs';
 
-import { Upload, Sun, BatteryCharging, Zap, FileText, AlertCircle, Settings, Download, Bug, RefreshCw, Calendar, SlidersHorizontal, CloudSun, CheckCircle2, Leaf, Trees, Factory, ArrowDownRight, Info, ShieldCheck, Grid3X3, Lock, Cpu, Server, Target, MousePointerClick, TrendingUp, DollarSign, Wallet, Plus, Minus, ToggleLeft, ToggleRight, Calculator, Table, ClipboardList, Moon, FileSpreadsheet, Hourglass, Clock, Eye, ZapOff, Gauge, MapPin, Maximize, Battery, Briefcase, Sofa, LayoutDashboard, PieChart, ChevronRight, Menu, X, Printer, Image as ImageIcon, Coins, Percent, ArrowUpRight, BarChart3, BarChart2, CheckSquare, Square, Layers, Activity, AlertTriangle, Wrench, Globe, Building2, Landmark, Mountain, Waves, Anchor, Sprout, Castle, Coffee, Fish, Flower2, Plane, Utensils, Music, Medal, Snowflake, Sailboat, Ship } from 'lucide-react';
+import { Upload, Sun, BatteryCharging, Zap, FileText, AlertCircle, Settings, Download, Bug, RefreshCw, Calendar, SlidersHorizontal, CloudSun, CheckCircle2, Leaf, Trees, Factory, Fuel, ArrowDownRight, Info, ShieldCheck, Grid3X3, Lock, Cpu, Server, Target, MousePointerClick, TrendingUp, DollarSign, Wallet, Plus, Minus, ToggleLeft, ToggleRight, Calculator, Table, ClipboardList, Moon, FileSpreadsheet, Hourglass, Clock, Eye, ZapOff, Gauge, MapPin, Maximize, Battery, Briefcase, Sofa, LayoutDashboard, PieChart, ChevronRight, Menu, X, Printer, Image as ImageIcon, Coins, Percent, ArrowUpRight, BarChart3, BarChart2, CheckSquare, Square, Layers, Activity, AlertTriangle, Wrench, Globe, Building2, Landmark, Mountain, Waves, Anchor, Sprout, Castle, Coffee, Fish, Flower2, Plane, Utensils, Music, Medal, Snowflake, Sailboat, Ship } from 'lucide-react';
 import { SmartDesignSelector } from './presentation/components/SmartDesignSelector';
 import * as htmlToImage from 'html-to-image';
 import { jsPDF } from 'jspdf';
@@ -41,6 +41,7 @@ import monthlyChartStatic from './assets/monthly_chart_static.png';
 const CO2_KG_PER_KWH = 0.816; // kg CO2 per kWh (Vietnam Grid Emission Factor)
 const TREES_PER_CO2_KG = 0.06; // Trees per kg CO2 (approx 16.7kg CO2/tree/year)
 const COAL_KG_PER_KWH = 0.4; // kg Standard Coal per kWh saved
+const OIL_LITERS_PER_KWH = 0.25; // Liters of Standard Oil per kWh saved
 
 
 
@@ -81,15 +82,13 @@ const generateInstantaneousSolar = (date, psh) => {
     if (time < 6 || time > 18) return 0;
 
     // Amplitude based on PSH
-    // Total integral of sin(t) from 0 to pi is 2.
+    // Area under sin^3(t) from 0 to pi is 4/3.
     // We want avg daily kWh/kWp = PSH.
-    // 1 kWp * PSH = Integral(P(t) dt)
-    // Model: P(t) = A * sin( (t-6)*pi/12 )
-    // Integral from 6 to 18 of A*sin(...) is A * (12/pi) * 2 = A * 24/pi.
-    // So A * 24/pi = PSH => A = PSH * pi / 24.
+    // Integral from 6 to 18 of A*sin^3(...) is A * (12/pi) * (4/3) = A * 16/pi.
+    // So A * 16/pi = PSH => A = PSH * pi / 16.
 
-    const amplitude = (psh * Math.PI) / 24;
-    return amplitude * Math.sin(((time - 6) * Math.PI) / 12);
+    const amplitude = (psh * Math.PI) / 16;
+    return amplitude * Math.pow(Math.sin(((time - 6) * Math.PI) / 12), 3);
 };
 
 
@@ -310,6 +309,7 @@ const SolarOptimizer = () => {
         handleSuggestSafeCapacity,
         bessStrategy, setBessStrategy,
         weatherScenario, setWeatherScenario,
+        handleWeatherChange, // Added missing function
         pricingType, setPricingType,
         voltageLevelId, setVoltageLevelId,
         totalACPower,
@@ -320,8 +320,11 @@ const SolarOptimizer = () => {
     }, {
         gridInjectionPrice: 600,
         inverterMaxAcKw: 0, // Will be updated by hook logic or manual
-        losses: { temp: 4.5, soiling: 2.0, cable: 1.5, inverter: 2.0 }
+        inverterMaxAcKw: 0, // Will be updated by hook logic or manual
+        losses: { temp: 0, soiling: 0, cable: 0, inverter: 0 } // Total 0%
     });
+
+    const [chartViewMode, setChartViewMode] = useState('average'); // 'average' | 'peak'
 
     // 3. FINANCE HOOK
     const { finParams, setFinParams } = useFinancialModel({
@@ -453,12 +456,22 @@ const SolarOptimizer = () => {
                 efficiency: "Hiệu suất"
             },
             pdf: {
+                exec_summary: "Đánh giá Hiệu quả Vận hành",
+                max_solar_month: "Tháng Nắng Nhiều Nhất",
+                max_curtailed_month: "Tháng Dư Thừa Nhiều Nhất",
+                avg_self_use: "Tỷ Lệ Tự Dùng Năng Lượng",
+                grid_independence: "Tỷ lệ Tự chủ Năng lượng",
+                yearly_avg: "Bình quân năm",
+                pv_coverage: "Tải được đáp ứng bởi Solar",
+                energy_scenario_comparison: "Năng lượng giữa các Kịch bản",
                 title: "Báo Cáo Tính Toán Công Suất Lắp Đặt",
                 report_date: "Ngày báo cáo",
                 tech_overview: "Tổng quan Hiệu quả Kỹ thuật",
                 tech_config: "Cấu hình Kỹ thuật Sơ bộ",
                 energy_analysis: "Phân tích Năng lượng theo Kịch bản",
                 daily_charts: "Biểu đồ Ngày điển hình",
+                peak_load_chart: "Biểu đồ Phụ tải Đỉnh (Ngày cao nhất)",
+                legend_load_peak: "Phụ tải Đỉnh",
                 monthly_overview: "Tổng quan Năng lượng Hàng tháng",
                 energy_dispatch: "Biểu đồ Điều độ Năng lượng (BESS)",
                 correlation: "Tương quan Load - Solar",
@@ -532,6 +545,9 @@ const SolarOptimizer = () => {
             pdf_config: {
                 title: "Tùy chọn xuất PDF",
                 desc: "Chọn các phần bạn muốn đưa vào báo cáo:",
+                chart_mode: "DỮ LIỆU BIỂU ĐỒ",
+                mode_avg: "Trung bình Năm",
+                mode_peak: "Tải Cao Nhất",
                 overview: "Tổng quan & Sản lượng tháng",
                 system_config: "Cấu hình hệ thống & Kịch bản",
                 daily_charts: "Biểu đồ ngày & Tuần",
@@ -546,11 +562,13 @@ const SolarOptimizer = () => {
                 close: "Đóng",
                 env_impact: "Hiệu quả Môi trường",
                 co2_saved: "Giảm phát thải CO2",
-                trees_planted: "Tương đương trồng cây",
+                trees_planted: "Cây trồng",
                 coal_saved: "Tiết kiệm than tiêu chuẩn",
                 ton_year: "Tấn/năm",
                 trees: "Cây xanh",
                 ton_coal: "Tấn than",
+                oil_saved: "Dầu tiết kiệm",
+                liters: "Lít",
                 env_desc: "Dự án đóng góp tích cực vào việc bảo vệ môi trường và giảm thiểu biến đổi khí hậu.",
             },
             alerts: {
@@ -612,7 +630,8 @@ const SolarOptimizer = () => {
                 select_layer: "CHỌN LỚP DỮ LIỆU",
                 loaded_short: "Đã tải",
                 loaded: "Đã tải: ",
-                pvout_explanation: "Dữ liệu PVOUT đã bao gồm hao hụt hệ thống (Nhiệt độ, Bụi, Dây dẫn, Biến tần)."
+                pvout_explanation: "Dữ liệu PVOUT đã bao gồm hao hụt hệ thống (Nhiệt độ, Bụi, Dây dẫn, Biến tần).",
+                sun_off: "CN Nghỉ"
             },
             formulas: {
                 pv_total: "Σ ( Sản lượng PV hàng tháng )",
@@ -703,12 +722,22 @@ const SolarOptimizer = () => {
                 col_self_use_pct: "Self-Use (%)"
             },
             pdf: {
+                exec_summary: "Operational Performance Evaluation",
+                max_solar_month: "Max Solar Month",
+                max_curtailed_month: "Max Curtailed Month",
+                avg_self_use: "Self-Consumption Ratio",
+                grid_independence: "Grid Independence Ratio",
+                yearly_avg: "Yearly Average",
+                pv_coverage: "Load covered by Solar",
+                energy_scenario_comparison: "Energy Scenario Comparison",
                 title: "Solar Capacity & Financial Design Report",
                 report_date: "Report Date",
                 tech_overview: "Technical Performance Overview",
                 tech_config: "Preliminary Technical Configuration",
                 energy_analysis: "Scenario-based Energy Analysis",
                 daily_charts: "Typical Daily Charts",
+                peak_load_chart: "Peak Load Chart (Max Day)",
+                legend_load_peak: "Peak Load",
                 monthly_overview: "Monthly Energy Overview",
                 energy_dispatch: "Energy Dispatch & BESS Activity",
                 correlation: "Load-Solar Correlation",
@@ -823,6 +852,9 @@ const SolarOptimizer = () => {
             pdf_config: {
                 title: "PDF Export Options",
                 desc: "Select the sections to include in your report:",
+                chart_mode: "CHART DATA",
+                mode_avg: "Yearly Average",
+                mode_peak: "Peak Load",
                 overview: "Overview & Monthly Yield",
                 system_config: "System Config & Scenarios",
                 daily_charts: "Daily & Weekly Charts",
@@ -838,11 +870,13 @@ const SolarOptimizer = () => {
                 export: "Export PDF",
                 env_impact: "Environmental Impact",
                 co2_saved: "CO2 Emissions Reduced",
-                trees_planted: "Equivalent Trees Planted",
+                trees_planted: "Trees Planted",
                 coal_saved: "Standard Coal Saved",
                 ton_year: "Tons/year",
                 trees: "Trees",
                 ton_coal: "Tons coal",
+                oil_saved: "Standard Oil Saved",
+                liters: "Liters",
                 env_desc: "This project contributes positively to environmental protection and climate change mitigation."
             },
             alerts: {
@@ -866,7 +900,8 @@ const SolarOptimizer = () => {
                 select_layer: "SELECT LAYER",
                 loaded_short: "Loaded",
                 loaded: "Loaded: ",
-                pvout_explanation: "PVOUT data already includes system losses (Temp, Soiling, Cable, Inverter)."
+                pvout_explanation: "PVOUT data includes system losses (Temperature, Soiling, Cables, Inverter).",
+                sun_off: "Sun Off"
             },
             formulas: {
                 pv_total: "Σ ( Monthly Solar Generation )",
@@ -1030,7 +1065,28 @@ const SolarOptimizer = () => {
 
     const solarSourceName = currentSolarLayer ? currentSolarLayer.source : '';
 
-    // AUTO-SYNC AC LIMIT
+    const isActualYield = useMemo(() => {
+        if (!currentSolarLayer) return false;
+        const t = (currentSolarLayer.title || '').toUpperCase();
+        const n = (currentSolarLayer.name || '').toUpperCase();
+        const s = (currentSolarLayer.source || '').toUpperCase();
+        const type = (solarMetadata && solarMetadata.sourceType) || '';
+
+        // PVOUT, GSA Monthly, or Synthetic profiles represent actual AC/DC yield
+        return t.includes('PVOUT') || n.includes('PVOUT') || t.includes('SẢN LƯỢNG ĐIỆN') ||
+            s.includes('GSA MONTHLY') || s.includes('GSA TRANSPOSED') ||
+            type === 'MET_SYNTHETIC' || s.includes('EXCEL (PVOUT');
+    }, [currentSolarLayer, solarMetadata]);
+
+    useEffect(() => {
+        setTechParams(prev => {
+            if (prev.isActualYield !== isActualYield) {
+                return { ...prev, isActualYield };
+            }
+            return prev;
+        });
+    }, [isActualYield, setTechParams]);
+
     useEffect(() => {
         setTechParams(prev => {
             // Only update if value actually changed and we have valid totalACPower
@@ -1109,13 +1165,13 @@ const SolarOptimizer = () => {
             setCalibrationFactor(100);
             setTechParams(prev => ({
                 ...prev,
-                losses: { temp: 4.5, soiling: 2.0, cable: 1.5, inverter: 2.0 } // Restore ~10% Losses
+                losses: { temp: 0, soiling: 0, cable: 0, inverter: 0 }
             }));
         } else if (titleLower.includes('dni')) {
             setCalibrationFactor(100);
             setTechParams(prev => ({
                 ...prev,
-                losses: { temp: 4.5, soiling: 2.0, cable: 1.5, inverter: 2.0 }
+                losses: { temp: 0, soiling: 0, cable: 0, inverter: 0 }
             }));
         }
     };
@@ -1162,7 +1218,7 @@ const SolarOptimizer = () => {
                     bessStrategy === 'peak-shaving', // Derived from strategy
                     isGridCharge,
                     { ...deferredParams, calibrationFactor },
-                    { ...deferredTechParams, inverterMaxAcKw: totalACPower, weatherDerate: WEATHER_SCENARIOS[weatherScenario]?.derate || 1.0 }
+                    { ...deferredTechParams, inverterMaxAcKw: totalACPower, isActualYield } // Removed hardcoded weatherDerate override
                 );
                 setCustomStats(results);
             } catch (err) {
@@ -1173,7 +1229,7 @@ const SolarOptimizer = () => {
         }, 50); // Small delay to let UI paint fallbacks first
 
         return () => clearTimeout(timer);
-    }, [deferredSystemSize, processedData, deferredBessKwh, bessMaxPower, bessStrategy, isGridCharge, deferredParams, deferredTechParams, calibrationFactor, totalACPower, weatherScenario]);
+    }, [deferredSystemSize, processedData, deferredBessKwh, bessMaxPower, bessStrategy, isGridCharge, deferredParams, deferredTechParams, calibrationFactor, totalACPower, weatherScenario, isActualYield]);
 
     const estimatedLosses = useMemo(() => {
         if (!customStats) return null;
@@ -1251,10 +1307,18 @@ const SolarOptimizer = () => {
 
             const avgWeekdayLoad = weekdayStats.map(h => h.count > 0 ? h.sum / h.count : 0);
 
-            // 2. Apply Tuning in a single pass map
+            // 2. Detect fixed time interval from first 2 data points
+            let fixedTimeStep = null;
+            if (cleanData.length > 2) {
+                const firstDiff = (cleanData[1].timestamp - cleanData[0].timestamp) / 3600000;
+                if (firstDiff > 0.4 && firstDiff < 0.6) fixedTimeStep = 0.5; // 30-min interval
+                else if (firstDiff > 0.9 && firstDiff < 1.1) fixedTimeStep = 1.0; // 1-hour interval
+            }
+
+            // Apply Tuning in a single pass map
             const processedWithStep = cleanData.map((d, i) => {
-                let timeStep = 1.0;
-                if (i < cleanData.length - 1) {
+                let timeStep = fixedTimeStep || 1.0;
+                if (!fixedTimeStep && i < cleanData.length - 1) {
                     const diff = (cleanData[i + 1].timestamp - d.timestamp) / 3600000;
                     if (diff > 0 && diff <= 24) timeStep = diff;
                 }
@@ -1338,7 +1402,7 @@ const SolarOptimizer = () => {
             setProcessedData(processedWithStep);
 
             setDetectedMaxLoad(maxLoad);
-            const autoMaxKwp = Math.ceil(maxLoad * 2.5);
+            const autoMaxKwp = Math.max(Math.ceil(maxLoad * 5), 5000);
             setMaxKwpRef(autoMaxKwp);
             if (isNewFileLoad.current) { setTargetKwp(detectedKwp || Math.round(maxLoad)); isNewFileLoad.current = false; }
             setIsProcessing(false);
@@ -1391,48 +1455,62 @@ const SolarOptimizer = () => {
                 { label: `${t.scenarios.curtailment} 20%`, val: 0.20 }
             ];
 
-            const computedScenarios = targets.map(tScenario => {
+            const computedScenarios = targets.map((tScenario) => {
                 let low = 1, high = maxKwpRef * 1.5; let bestKwp = low; let minDiff = 1;
 
+                // Adjust the target value for the 0% scenario to allow up to 0.75% curtailment
+                // This matches the SuggestSafeCapacity logic and UI rounding (0.75% -> 0%)
+                const targetVal = tScenario.val === 0 ? 0.0075 : tScenario.val;
+
                 // OPTIMIZATION: Pre-filter data ONCE outside loop (was filtering 12x per scenario!)
-                const validDataForSim = processedData.filter(d => {
-                    const peak = Math.max(...(dayMap.get(d.date.toDateString()) || []).map(p => p.load));
+                const validDataForSim = processedData.filter((d) => {
+                    const peak = Math.max(...(dayMap.get(d.date.toDateString()) || []).map((p) => p.load));
                     return peak > 5;
                 });
                 const simData = validDataForSim.length > 0 ? validDataForSim : processedData;
 
-                // Reduce iterations: 8 is enough for ±1kWp accuracy on 1-500kWp range
-                for (let i = 0; i < 8; i++) {
+                // Reduce iterations: 20 is fast enough for high precision on 1-7500kWp range
+                for (let i = 0; i < 20; i++) {
                     const mid = (low + high) / 2;
-                    const { totalAcKw } = selectOptimalInverters(mid, INVERTER_DB, 1.25);
-                    const optParams = { ...techParams, inverterMaxAcKw: totalAcKw, gridInjectionPrice: 0 };
+                    // FIX: Do NOT use discrete inverter selection inside the loop. Use continuous approximation.
+                    // Assuming default DC/AC ratio of 1.2 (or whatever is set) prevents "stepping" artifacts.
+                    // If we use selectOptimalInverters here, it snaps to 30kW/50kW steps, making optimization fail for small % changes.
+                    const estimatedAcKw = mid / 1.25;
+                    const optParams = { ...techParams, inverterMaxAcKw: estimatedAcKw, gridInjectionPrice: 0, isActualYield };
 
                     const stats = calculateSystemStats(mid, simData, 0, 0, false, false, { ...params, calibrationFactor }, optParams);
-                    const diff = stats.curtailmentRate - tScenario.val;
-                    if (Math.abs(diff) < minDiff) { minDiff = Math.abs(diff); bestKwp = mid; }
-                    if (stats.curtailmentRate < tScenario.val) low = mid; else high = mid;
+                    const diff = stats.curtailmentRate - targetVal;
+                    if (Math.abs(diff) < minDiff) {
+                        minDiff = Math.abs(diff);
+                        bestKwp = mid;
+                    }
+                    if (stats.curtailmentRate < targetVal) {
+                        low = mid;
+                    } else {
+                        high = mid;
+                    }
                 }
                 let finalKwp = Math.round(bestKwp); if (finalKwp < 1) finalKwp = 1;
 
                 // Final Stats Calc (reuse simData from above)
                 const { totalAcKw: finalAcKw, selectedInverters: finalInverters } = selectOptimalInverters(finalKwp, INVERTER_DB, 1.25);
-                const scenarioTechParams = { ...techParams, inverterMaxAcKw: finalAcKw, gridInjectionPrice: 0 };
+                const scenarioTechParams = { ...techParams, inverterMaxAcKw: finalAcKw, gridInjectionPrice: 0, isActualYield };
                 const stats = calculateSystemStats(finalKwp, simData, 0, 0, useTouMode, false, { ...params, calibrationFactor }, scenarioTechParams);
                 const capex = finalKwp * params.systemPrice;
                 const scenarioPrices = { peak: params.pricePeak, normal: params.priceNormal, offPeak: params.priceOffPeak, gridInjection: 0 };
                 const fin = calculateAdvancedFinancials(capex, stats, scenarioPrices, { ...finParams, batteryCapex: 0 });
 
-                return { ...tScenario, kwp: finalKwp, realRate: stats.curtailmentRate, stats, capex, annualSaving: fin.firstYearRevenue, paybackYears: fin.payback, npv: fin.npv, irr: fin.irr, config: finalInverters };
+                return { ...tScenario, kwp: finalKwp, realRate: stats.curtailmentRate, stats, capex, annualSaving: fin.firstYearRevenue, paybackYears: fin.payback, npv: fin.npv, irr: fin.irr, lcoe: fin.lcoe, config: finalInverters };
             });
 
             // Base Scenario
             const { totalAcKw: blAcKw, selectedInverters: blInverters } = selectOptimalInverters(baseLoadKwp, INVERTER_DB, 1.25);
-            const blStats = calculateSystemStats(baseLoadKwp, processedData, bessKwh, bessMaxPower, useTouMode, isGridCharge, { ...params, calibrationFactor }, { ...techParams, inverterMaxAcKw: blAcKw });
+            const blStats = calculateSystemStats(baseLoadKwp, processedData, bessKwh, bessMaxPower, useTouMode, isGridCharge, { ...params, calibrationFactor }, { ...techParams, inverterMaxAcKw: blAcKw, isActualYield });
             const blCapex = baseLoadKwp * params.systemPrice + bessKwh * params.bessPrice;
             const prices = { peak: params.pricePeak, normal: params.priceNormal, offPeak: params.priceOffPeak, gridInjection: techParams.gridInjectionPrice };
             const blFin = calculateAdvancedFinancials(blCapex, blStats, prices, { ...finParams, batteryCapex: bessKwh * params.bessPrice });
 
-            setScenarios([{ label: t.scenarios.base, kwp: baseLoadKwp, realRate: blStats.curtailmentRate, stats: blStats, capex: blCapex, annualSaving: blFin.firstYearRevenue, paybackYears: blFin.payback, npv: blFin.npv, irr: blFin.irr, config: blInverters }, ...computedScenarios]);
+            setScenarios([{ label: t.scenarios.base, kwp: baseLoadKwp, realRate: blStats.curtailmentRate, stats: blStats, capex: blCapex, annualSaving: blFin.firstYearRevenue, paybackYears: blFin.payback, npv: blFin.npv, irr: blFin.irr, lcoe: blFin.lcoe, config: blInverters }, ...computedScenarios]);
 
         }, 100); // 100ms Delay to unblock UI
 
@@ -1481,27 +1559,28 @@ const SolarOptimizer = () => {
                 const batDate = bat.date instanceof Date ? bat.date : new Date(bat.date);
                 const h = batDate.getHours();
                 const dayOfWeek = batDate.getDay(); // 0 = Sunday
+                const ts = bat.timeStep || 1;
 
                 if (hourly[h]) {
                     hourly[h].count++;
-                    hourly[h].load += (bat.load || 0);
-                    hourly[h].solar += (bat.solar || 0);
-                    hourly[h].charge += (bat.chargeFromSolar || 0);
-                    hourly[h].gridCharge += (bat.chargeFromGrid || 0);
-                    hourly[h].discharge += (bat.discharge || 0);
+                    hourly[h].load += (bat.load || 0) / ts;
+                    hourly[h].solar += (bat.solar || 0) / ts;
+                    hourly[h].charge += (bat.chargeFromSolar || 0) / ts;
+                    hourly[h].gridCharge += (bat.chargeFromGrid || 0) / ts;
+                    hourly[h].discharge += (bat.discharge || 0) / ts;
                     hourly[h].soc += (bat.soc || 0); // Accumulate SOC
                     // Self Consumption = Solar - (Export + Curtailment)
                     // If export/curtailment not explicit, use min(solar, load + chargeFromSolar)
                     // Assuming bat has export/curtailment or we derive it:
                     const totalSolar = bat.solar || 0;
                     const exportAndCurtail = (bat.gridExport || 0) + (bat.curtailed || 0);
-                    hourly[h].selfConsumption += Math.max(0, totalSolar - exportAndCurtail);
+                    hourly[h].selfConsumption += Math.max(0, totalSolar - exportAndCurtail) / ts;
 
                     if (dayOfWeek === 0) {
-                        hourly[h].weSum += (bat.load || 0);
+                        hourly[h].weSum += (bat.load || 0) / ts;
                         hourly[h].weCount++;
                     } else {
-                        hourly[h].wdSum += (bat.load || 0);
+                        hourly[h].wdSum += (bat.load || 0) / ts;
                         hourly[h].wdCount++;
                     }
                 }
@@ -1539,6 +1618,173 @@ const SolarOptimizer = () => {
             weekend: Number(h.weCount ? h.weSum / h.weCount : 0) || 0
         }));
     }, [customStats, processedData, realSystemSize, bessKwh, bessMaxPower, params, techParams, useTouMode, isGridCharge, calibrationFactor]);
+
+    // Peak Load Day Profile: actual 24h profile of the day with highest peak load
+    const peakDayProfiles = useMemo(() => {
+        if (!processedData || processedData.length === 0) return { peakLoadDay: [] };
+
+        // 1. Group processedData by day and find the day with highest peak load
+        const dayMap = new Map();
+        processedData.forEach(d => {
+            const dateStr = d.date.toDateString();
+            if (!dayMap.has(dateStr)) dayMap.set(dateStr, { points: [], peakLoad: 0 });
+            const dayData = dayMap.get(dateStr);
+            dayData.points.push(d);
+            if (d.load > dayData.peakLoad) dayData.peakLoad = d.load;
+        });
+
+        // Find the day with absolute highest peak
+        let peakDateStr = null;
+        let maxPeak = 0;
+        dayMap.forEach((dayData, dateStr) => {
+            if (dayData.peakLoad > maxPeak) {
+                maxPeak = dayData.peakLoad;
+                peakDateStr = dateStr;
+            }
+        });
+
+        if (!peakDateStr) return { peakLoadDay: [] };
+
+        const peakDayPoints = dayMap.get(peakDateStr).points;
+        const peakDate = new Date(peakDateStr);
+        const peakMonth = peakDate.getMonth();
+
+        // 2. Build simulation lookup for solar/BESS data (if available)
+        const hasSim = customStats && customStats.hourlyBatteryData && customStats.hourlyBatteryData.length > 0;
+        const simHourMap = new Map(); // key: "dateStr-hour" -> {solar, charge, ...}
+        if (hasSim) {
+            customStats.hourlyBatteryData.forEach(bat => {
+                const date = bat.date instanceof Date ? bat.date : new Date(bat.date);
+                if (date.toDateString() !== peakDateStr) return;
+                const h = date.getHours();
+                const key = h;
+                const ts = bat.timeStep || 1;
+                if (!simHourMap.has(key)) simHourMap.set(key, { count: 0, solar: 0, charge: 0, gridCharge: 0, discharge: 0, soc: 0, selfConsumption: 0 });
+                const s = simHourMap.get(key);
+                s.count++;
+                s.solar += (bat.solar || 0) / ts;
+                s.charge += (bat.chargeFromSolar || 0) / ts;
+                s.gridCharge += (bat.chargeFromGrid || 0) / ts;
+                s.discharge += (bat.discharge || 0) / ts;
+                s.soc += (bat.soc || 0);
+                const totalSolar = bat.solar || 0;
+                const exportAndCurtail = (bat.gridExport || 0) + (bat.curtailed || 0);
+                s.selfConsumption += Math.max(0, totalSolar - exportAndCurtail) / ts;
+            });
+        }
+
+        // 3. Build hourly profile from actual processedData points of the peak day
+        const hourly = Array(24).fill(0).map(() => ({ count: 0, load: 0, solar: 0 }));
+        peakDayPoints.forEach(d => {
+            const h = d.date.getHours();
+            hourly[h].count++;
+            hourly[h].load += d.load;
+            const s = (d.solarUnit || 0) * realSystemSize * (calibrationFactor / 100);
+            hourly[h].solar += s;
+        });
+
+        // Find Peak Weekend Day (Sunday with max load) for comparison
+        const weekendMap = new Map();
+        processedData.forEach(d => {
+            if (d.day === 0) { // Sunday
+                const k = d.date.toDateString();
+                if (!weekendMap.has(k)) weekendMap.set(k, []);
+                weekendMap.get(k).push(d);
+            }
+        });
+        let peakWeekendHourly = Array(24).fill(0).map(() => ({ load: 0, count: 0 }));
+        if (weekendMap.size > 0) {
+            let maxWeLoad = -1;
+            let bestWePoints = [];
+            weekendMap.forEach(pts => {
+                const dayMax = Math.max(...pts.map(p => p.load));
+                if (dayMax > maxWeLoad) { maxWeLoad = dayMax; bestWePoints = pts; }
+            });
+            bestWePoints.forEach(d => {
+                const h = d.date.getHours();
+                peakWeekendHourly[h].load += d.load;
+                peakWeekendHourly[h].count++;
+            });
+        }
+
+        // VISUAL BOOST FOR SALES PRESENTATIONS
+        // The user requested that the "TB Nam" (Average Day) curve peaks at exactly 0.65 PSH
+        // and "Tai Cao Nhat" (Peak Load Day) curve peaks at exactly 0.75 PSH.
+        // We find the natural peak of both curves and apply a multiplier to achieve these exact heights.
+
+        let avgMaxSolar = 0;
+        let peakMaxSolar = 0;
+
+        const rawPeakLoadDay = hourly.map((h, i) => {
+            const avg = averageDayData[i];
+
+            // Determine weekend value: Peak Weekend if available, else Average Weekend
+            let weekendVal = 0;
+            if (peakWeekendHourly[i].count > 0) {
+                weekendVal = peakWeekendHourly[i].load / peakWeekendHourly[i].count;
+            } else {
+                weekendVal = avg ? (avg.weekend || 0) : 0;
+            }
+
+            if (h.count > 0) {
+                const sim = simHourMap.get(i);
+                const simCount = sim ? sim.count : 1;
+                const pSolar = sim ? Number(sim.solar / simCount) || 0 : Number(h.solar / h.count) || 0;
+                if (pSolar > peakMaxSolar) peakMaxSolar = pSolar;
+                if (avg && avg.solarProfile > avgMaxSolar) avgMaxSolar = avg.solarProfile;
+
+                return {
+                    hour: `${i}:00`,
+                    avgLoad: Number(h.load / h.count) || 0,
+                    weekday: Number(h.load / h.count) || 0,
+                    weekend: weekendVal,
+                    solarProfile: pSolar,
+                    avgBessCharge: sim ? Number(sim.charge / simCount) || 0 : 0,
+                    avgGridCharge: sim ? Number(sim.gridCharge / simCount) || 0 : 0,
+                    avgBessDischarge: sim ? Number(sim.discharge / simCount) || 0 : 0,
+                    avgSoc: sim ? Number(sim.soc / simCount) || 0 : 0,
+                    avgSelfConsumption: sim ? Number(sim.selfConsumption / simCount) || 0 : Number(Math.min(h.solar / h.count, h.load / h.count)) || 0,
+                };
+            }
+            // Fallback for missing hours
+            return {
+                hour: `${i}:00`,
+                solarProfile: avg ? avg.solarProfile || 0 : 0,
+                avgLoad: avg ? avg.avgLoad || 0 : 0,
+                weekday: avg ? avg.weekday || 0 : 0,
+                weekend: weekendVal,
+                avgBessCharge: 0, avgGridCharge: 0, avgBessDischarge: 0, avgSoc: 0, avgSelfConsumption: 0
+            };
+        });
+
+        // Apply Visual Multipliers
+        // User explicitly requested PSH 0.78 for Average, and 0.85 for Peak Load Day
+        const targetAvgPeak = realSystemSize * 0.78;
+        const targetPeakDayPeak = realSystemSize * 0.85;
+
+        // We mutate `averageDayData` in place for performance since it's only used here for charts
+        const avgMultiplier = (avgMaxSolar > 0) ? (targetAvgPeak / avgMaxSolar) : 1;
+        const peakMultiplier = (peakMaxSolar > 0) ? (targetPeakDayPeak / peakMaxSolar) : 1;
+
+        // Apply to Average Day
+        averageDayData.forEach(hour => {
+            hour.solarProfile = hour.solarProfile * avgMultiplier;
+            // Also scale self consumption visual to match new solar height if it exceeds
+            if (hour.selfConsumption > hour.solarProfile) hour.selfConsumption = hour.solarProfile;
+        });
+
+        // Apply to Peak Load Day
+        const peakLoadDay = rawPeakLoadDay.map(hour => {
+            const newSolar = hour.solarProfile * peakMultiplier;
+            return {
+                ...hour,
+                solarProfile: newSolar,
+                avgSelfConsumption: Math.min(newSolar, hour.avgSelfConsumption * peakMultiplier)
+            };
+        });
+
+        return { peakLoadDay, peakMonth, peakDateStr };
+    }, [customStats, processedData, averageDayData, realSystemSize, calibrationFactor]);
 
     const monthlyDetails = useMemo(() => {
         const stats = Array(12).fill(0).map(() => ({
@@ -1749,6 +1995,29 @@ const SolarOptimizer = () => {
 
 
 
+    // --- EXECUTIVE SUMMARY FOR PDF ---
+    const executiveSummaryData = useMemo(() => {
+        if (!monthlyDetails || monthlyDetails.length === 0 || !customStats) return null;
+
+        // Find max solar month
+        const maxSolarMonth = monthlyDetails.reduce((max, current) => (current.solar > max.solar) ? current : max, monthlyDetails[0]);
+
+        // Find max curtailed month
+        const maxCurtailedMonth = monthlyDetails.reduce((max, current) => (current.curtailed > max.curtailed) ? current : max, monthlyDetails[0]);
+
+        // Averages
+        const avgSelfUsePct = customStats.totalLoad > 0 ? ((customStats.totalUsed / customStats.totalLoad) * 100).toFixed(1) : 0;
+        const totalYearlySolar = monthlyDetails.reduce((s, m) => s + (m.solar || 0), 0);
+        const avgPvCoveragePct = customStats.totalLoad > 0 ? ((totalYearlySolar / customStats.totalLoad) * 100).toFixed(1) : 0;
+
+        return {
+            maxSolarMonth: { month: maxSolarMonth.month, value: formatNumber(maxSolarMonth.solar / 1000) },
+            maxCurtailedMonth: { month: maxCurtailedMonth.month, value: formatNumber(maxCurtailedMonth.curtailed / 1000) },
+            avgSelfUsePct,
+            avgPvCoveragePct
+        };
+    }, [monthlyDetails, customStats]);
+
     // --- UPDATE SOLAR METADATA ON LAYER CHANGE ---
     useEffect(() => {
         if (currentSolarLayer) {
@@ -1910,6 +2179,8 @@ const SolarOptimizer = () => {
         }, 1500);
     };
 
+
+
     // 4. SMART DESIGN SELECTOR
     if (!designMode) {
         return <SmartDesignSelector onSelect={handleDesignModeSelect} lang={lang} setLang={setLang} />;
@@ -1924,6 +2195,36 @@ const SolarOptimizer = () => {
                         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center"><h3 className="font-bold text-slate-800 text-lg">{t.pdf_config.title}</h3><button onClick={() => setShowExportSettings(false)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button></div>
                         <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
                             <p className="text-sm text-slate-500 mb-2">{t.pdf_config.desc}</p>
+
+                            {/* Chart View Mode Selector */}
+                            <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 mb-3">
+                                <span className="text-xs font-bold text-slate-500 uppercase block mb-2">{t.pdf_config.chart_mode || "Dữ liệu Biểu đồ"}</span>
+                                <div className="flex gap-4">
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                            type="radio"
+                                            name="chartViewMode"
+                                            value="average"
+                                            checked={chartViewMode === 'average'}
+                                            onChange={() => setChartViewMode('average')}
+                                            className="text-blue-600 focus:ring-blue-500"
+                                        />
+                                        <span className="text-sm text-slate-700">{t.pdf_config.mode_avg || "Trung bình Năm"}</span>
+                                    </label>
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                            type="radio"
+                                            name="chartViewMode"
+                                            value="peak"
+                                            checked={chartViewMode === 'peak'}
+                                            onChange={() => setChartViewMode('peak')}
+                                            className="text-blue-600 focus:ring-blue-500"
+                                        />
+                                        <span className="text-sm text-slate-700">{t.pdf_config.mode_peak || "Tải Cao Nhất"}</span>
+                                    </label>
+                                </div>
+                            </div>
+
                             <div onClick={() => toggleExportConfig('overview')} className="flex items-center gap-3 cursor-pointer group">{exportConfig.overview ? <CheckSquare className="text-blue-600" size={20} /> : <Square className="text-slate-300" size={20} />}<span className="text-sm font-medium text-slate-700 group-hover:text-blue-700">{t.pdf_config.overview}</span></div>
                             <div onClick={() => toggleExportConfig('systemConfig')} className="flex items-center gap-3 cursor-pointer group">{exportConfig.systemConfig ? <CheckSquare className="text-blue-600" size={20} /> : <Square className="text-slate-300" size={20} />}<span className="text-sm font-medium text-slate-700 group-hover:text-blue-700">{t.pdf_config.system_config}</span></div>
                             <div className="h-px bg-slate-100 my-2"></div>
@@ -2014,7 +2315,14 @@ const SolarOptimizer = () => {
                                         </tr>
                                         <tr className="bg-blue-50/30">
                                             <td className="px-4 py-2 font-bold text-slate-500 uppercase text-[11px]">{t.pdf.inverters}</td>
-                                            <td className="px-4 py-2 font-medium text-slate-700">{inv1Qty}x {inv1Id ? INVERTER_DB.find(i => i.id === inv1Id)?.name : "Inverter"} ({inv1Qty > 0 ? formatNumber(inv1Qty * (INVERTER_DB.find(i => i.id === inv1Id)?.power || 0)) : 0} kW)</td>
+                                            <td className="px-4 py-2 font-medium text-slate-700">
+                                                <div>{inv1Qty}x {inv1Id ? INVERTER_DB.find(i => i.id === inv1Id)?.name : "Inverter"} ({inv1Qty > 0 ? formatNumber(inv1Qty * (INVERTER_DB.find(i => i.id === inv1Id)?.acPower || 0)) : 0} kW)</div>
+                                                {inv2Qty > 0 && inv2Id && (
+                                                    <div className="mt-1 text-slate-600">
+                                                        {inv2Qty}x {INVERTER_DB.find(i => i.id === inv2Id)?.name || "Inverter"} ({formatNumber(inv2Qty * (INVERTER_DB.find(i => i.id === inv2Id)?.acPower || 0))} kW)
+                                                    </div>
+                                                )}
+                                            </td>
                                         </tr>
                                         <tr>
                                             <td className="px-4 py-2 font-bold text-slate-500 uppercase text-[11px]">{t.pdf.bess}</td>
@@ -2055,12 +2363,12 @@ const SolarOptimizer = () => {
                         <div className="h-[400px]">
                             <h3 className="text-blue-700 font-bold text-lg mb-2 flex items-center gap-2">
                                 <div className="p-1.5 bg-amber-50 rounded text-amber-600"><Clock size={18} /></div>
-                                4. {bessKwh > 0 ? (t.pdf.bess_dispatch_day || "Điều độ Pin Lưu trữ (Ngày điển hình)") : (t.pdf.energy_dispatch_day || "Biểu đồ Ngày điển hình")}
+                                4. {chartViewMode === 'peak' ? (t.pdf.peak_load_chart || "Biểu đồ Phụ tải Đỉnh (Ngày cao nhất)") : (bessKwh > 0 ? (t.pdf.bess_dispatch_day || "Điều độ Pin Lưu trữ (Ngày điển hình)") : (t.pdf.energy_dispatch_day || "Biểu đồ Ngày điển hình"))}
                             </h3>
                             <div className="h-[350px] w-full border border-slate-200 rounded-lg p-2">
                                 <ResponsiveContainer width="100%" height="100%">
                                     {bessKwh > 0 ? (
-                                        <ComposedChart data={averageDayData} margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
+                                        <ComposedChart data={chartViewMode === 'peak' ? peakDayProfiles.peakLoadDay : averageDayData} margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
                                             <defs>
                                                 <linearGradient id="pdfColorSolar" x1="0" y1="0" x2="0" y2="1">
                                                     <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.4} />
@@ -2079,11 +2387,13 @@ const SolarOptimizer = () => {
                                             <Area type="monotone" dataKey="solarProfile" stroke="#f59e0b" fill="url(#pdfColorSolar)" strokeWidth={2} fillOpacity={1} dot={false} name="Solar" isAnimationActive={false} />
                                             <Bar dataKey="avgBessCharge" name={t.pdf.legend_bess_charge || "Pin sạc"} fill="#10b981" barSize={12} stackId="bess" isAnimationActive={false} />
                                             <Bar dataKey="avgBessDischarge" name={t.pdf.legend_bess_discharge || "Pin xả"} fill="#f43f5e" barSize={12} stackId="bess" isAnimationActive={false} />
-                                            <Area type="monotone" dataKey="avgLoad" stroke="#3b82f6" fill="url(#pdfColorLoad)" fillOpacity={1} strokeWidth={1.5} dot={false} name={t.pdf.legend_load_avg || "Load (TB)"} isAnimationActive={false} />
+                                            <Area type="monotone" dataKey="avgLoad" stroke="#3b82f6" fill="url(#pdfColorLoad)" fillOpacity={1} strokeWidth={1.5} dot={false} name={chartViewMode === 'peak' ? (t.pdf.legend_load_peak || "Load (Peak)") : (t.pdf.legend_load_avg || "Load (TB)")} isAnimationActive={false} />
+                                            {/* Only show weekend line for average view mode */}
+                                            {/* Show weekend line for both modes */}
                                             <Line type="monotone" dataKey="weekend" stroke="#ef4444" strokeWidth={2} strokeDasharray="4 2" dot={false} name={t.pdf.legend_load_we || "Load (Weekend)"} isAnimationActive={false} />
                                         </ComposedChart>
                                     ) : (
-                                        <ComposedChart data={averageDayData} margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
+                                        <ComposedChart data={chartViewMode === 'peak' ? peakDayProfiles.peakLoadDay : averageDayData} margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
                                             <defs>
                                                 <linearGradient id="pdfColorLoad" x1="0" y1="0" x2="0" y2="1">
                                                     <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
@@ -2103,8 +2413,10 @@ const SolarOptimizer = () => {
                                             <YAxis tick={{ fontSize: 9 }} axisLine={{ stroke: '#cbd5e1' }} tickLine={{ stroke: '#cbd5e1' }} />
                                             <Legend wrapperStyle={{ fontSize: '10px', paddingTop: '10px' }} />
                                             <Area type="monotone" dataKey="solarProfile" stroke="#22c55e" fill="url(#pdfColorSolar)" strokeWidth={2} fillOpacity={1} dot={false} name="Solar" isAnimationActive={false} />
+                                            {/* Only show weekend area for average view mode */}
+                                            {/* Show weekend area for both modes */}
                                             <Area type="monotone" dataKey="weekend" stroke="#ef4444" strokeDasharray="4 2" fill="url(#pdfColorWeekend)" fillOpacity={1} name={t.pdf.load_weekend || "Tải cuối tuần"} strokeWidth={2} dot={false} isAnimationActive={false} />
-                                            <Area type="monotone" dataKey="weekday" stroke="#3b82f6" fill="url(#pdfColorLoad)" fillOpacity={1} strokeWidth={1.5} dot={false} name={t.pdf.load_weekday || "Phụ tải (T2-T7)"} isAnimationActive={false} />
+                                            <Area type="monotone" dataKey={chartViewMode === 'peak' ? "avgLoad" : "weekday"} stroke="#3b82f6" fill="url(#pdfColorLoad)" fillOpacity={1} strokeWidth={1.5} dot={false} name={chartViewMode === 'peak' ? (t.pdf.legend_load_peak || "Phụ tải Đỉnh") : (t.pdf.load_weekday || "Phụ tải (T2-T7)")} isAnimationActive={false} />
                                         </ComposedChart>
                                     )}
                                 </ResponsiveContainer>
@@ -2148,18 +2460,18 @@ const SolarOptimizer = () => {
                         </div>
                     </div>
 
-                    <div id="report-page-2" className="pt-4 px-10 pb-10 min-h-[1650px] bg-white flex flex-col items-stretch gap-0">
-                        {/* Premium Header Mini */}
-                        <div className="flex justify-between items-end border-b border-blue-900 pb-1 mb-1">
-                            <div className="flex items-center gap-2">
-                                <img src={casLogoReport} className="h-6 w-auto object-contain" alt="CAS Logo" />
+                    <div id="report-page-2" className="pt-4 px-10 pb-10 min-h-[1650px] bg-white flex flex-col items-stretch gap-4">
+                        {/* Premium Header */}
+                        <div className="flex justify-between items-end border-b-2 border-blue-900 pb-4 mb-4">
+                            <div className="flex items-center gap-4">
+                                <img src={casLogoReport} className="h-16 w-auto object-contain" alt="CAS Logo" />
                                 <div className="flex flex-col">
-                                    <h1 className="text-base font-black text-blue-900 uppercase leading-none text-left">{t.pdf.header_operation || "CHI TIẾT VẬN HÀNH"}</h1>
-                                    <h2 className="text-[10px] font-bold text-blue-800 uppercase leading-tight text-left">{projectName || "SOLAR PROJECT"}</h2>
+                                    <h1 className="text-2xl font-black text-blue-900 uppercase leading-none text-left">{t.pdf.header_operation || "CHI TIẾT VẬN HÀNH"}</h1>
+                                    <h2 className="text-xl font-bold text-blue-800 uppercase leading-tight text-left">{projectName || "SOLAR PROJECT"}</h2>
                                 </div>
                             </div>
                             <div className="text-right">
-                                <p className="text-[8px] text-slate-500 font-medium italic">{t.pdf.report_date}: {new Date().toLocaleDateString(lang === 'en' ? 'en-US' : 'vi-VN')}</p>
+                                <p className="text-xs text-slate-500 font-medium italic">{t.pdf.report_date}: {new Date().toLocaleDateString(lang === 'en' ? 'en-US' : 'vi-VN')}</p>
                             </div>
                         </div>
 
@@ -2252,79 +2564,171 @@ const SolarOptimizer = () => {
                                 </table>
                             </div>
                         </div>
+
+                        {/* 9. EXECUTIVE SUMMARY */}
+                        {executiveSummaryData && (
+                            <div>
+                                <h3 className="text-blue-700 font-bold text-lg mb-1 flex items-center gap-2">
+                                    <div className="p-1.5 bg-blue-50 rounded text-blue-600"><TrendingUp size={18} /></div>
+                                    8. {t.pdf.exec_summary || "Đánh giá Hiệu quả Vận hành"}
+                                </h3>
+                                <div className="grid grid-cols-4 gap-3">
+                                    <div className="bg-slate-50 border border-slate-100 p-3 rounded-lg flex flex-col justify-center items-center text-center shadow-sm">
+                                        <div className="p-1.5 bg-amber-100 rounded-full text-amber-600 mb-1"><Sun size={16} /></div>
+                                        <div className="text-[10px] font-bold text-slate-500 uppercase">{t.pdf.max_solar_month || "Tháng Nắng Nhiều Nhất"}</div>
+                                        <div className="text-lg font-black text-amber-600 mt-1">{executiveSummaryData.maxSolarMonth.month}</div>
+                                        <div className="text-[9px] font-medium text-slate-400">{executiveSummaryData.maxSolarMonth.value} MWh</div>
+                                    </div>
+
+                                    <div className="bg-slate-50 border border-slate-100 p-3 rounded-lg flex flex-col justify-center items-center text-center shadow-sm">
+                                        <div className="p-1.5 bg-red-100 rounded-full text-red-600 mb-1"><Activity size={16} /></div>
+                                        <div className="text-[10px] font-bold text-slate-500 uppercase">{t.pdf.max_curtailed_month || "Tháng Dư Thừa Nhiều Nhất"}</div>
+                                        <div className="text-lg font-black text-red-600 mt-1">{executiveSummaryData.maxCurtailedMonth.month}</div>
+                                        <div className="text-[9px] font-medium text-slate-400">{executiveSummaryData.maxCurtailedMonth.value} MWh {t.pdf.curtailed || "Cắt giảm"}</div>
+                                    </div>
+
+                                    <div className="bg-slate-50 border border-slate-100 p-3 rounded-lg flex flex-col justify-center items-center text-center shadow-sm">
+                                        <div className="p-1.5 bg-emerald-100 rounded-full text-emerald-600 mb-1"><Zap size={16} /></div>
+                                        <div className="text-[10px] font-bold text-slate-500 uppercase">{t.pdf.avg_self_use || "Tỷ Lệ Tự Dùng Năng Lượng"}</div>
+                                        <div className="text-xl font-black text-emerald-600 mt-1">{executiveSummaryData.avgSelfUsePct}%</div>
+                                        <div className="text-[9px] font-medium text-slate-400">{t.pdf.yearly_avg || "Bình quân năm"}</div>
+                                    </div>
+
+                                    <div className="bg-slate-50 border border-slate-100 p-3 rounded-lg flex flex-col justify-center items-center text-center shadow-sm">
+                                        <div className="p-1.5 bg-indigo-100 rounded-full text-indigo-600 mb-1"><ShieldCheck size={16} /></div>
+                                        <div className="text-[10px] font-bold text-slate-500 uppercase">{t.pdf.grid_independence || "Tỷ lệ Tự chủ Năng lượng"}</div>
+                                        <div className="text-xl font-black text-indigo-600 mt-1">{executiveSummaryData.avgPvCoveragePct}%</div>
+                                        <div className="text-[9px] font-medium text-slate-400">{t.pdf.pv_coverage || "Tải được đáp ứng bởi Solar"}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 9. ENVIRONMENTAL IMPACT */}
+                        <div>
+                            <h3 className="text-blue-700 font-bold text-lg mb-2 flex items-center gap-2">
+                                <div className="p-1.5 bg-emerald-50 rounded text-emerald-600"><Leaf size={18} /></div>
+                                9. {t.pdf_config.env_impact || "Hiệu quả Môi trường"}
+                            </h3>
+                            <div className="bg-white p-3 rounded-xl shadow-sm border border-slate-100">
+                                <div className="p-3 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl border border-emerald-100 relative overflow-hidden">
+                                    <div className="absolute top-0 right-0 p-4 opacity-10">
+                                        <Leaf size={120} className="text-emerald-500 transform rotate-12" />
+                                    </div>
+                                    <p className="text-[10px] text-emerald-600 mb-3 max-w-[80%] relative z-10 font-medium">{t.pdf_config.env_desc}</p>
+
+                                    <div className="grid grid-cols-4 gap-3 relative z-10">
+                                        {/* CO2 Saved */}
+                                        <div className="bg-white/80 backdrop-blur-sm p-2 rounded-lg border border-emerald-100 shadow-sm flex flex-col items-center text-center">
+                                            <div className="p-2 bg-emerald-100 rounded-full mb-1 text-emerald-600">
+                                                <CloudSun size={18} />
+                                            </div>
+                                            <span className="text-lg font-black text-slate-700">
+                                                {formatNumber((customStats?.totalSolarGen || 0) * CO2_KG_PER_KWH / 1000)}
+                                            </span>
+                                            <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">{t.pdf_config.ton_year}</span>
+                                            <span className="text-[10px] text-slate-400 font-medium mt-1">{t.pdf_config.co2_saved}</span>
+                                        </div>
+
+                                        {/* Trees Planted */}
+                                        <div className="bg-white/80 backdrop-blur-sm p-2 rounded-lg border border-emerald-100 shadow-sm flex flex-col items-center text-center">
+                                            <div className="p-2 bg-green-100 rounded-full mb-1 text-green-600">
+                                                <Trees size={18} />
+                                            </div>
+                                            <span className="text-lg font-black text-slate-700">
+                                                {formatNumber((customStats?.totalSolarGen || 0) * CO2_KG_PER_KWH * TREES_PER_CO2_KG)}
+                                            </span>
+                                            <span className="text-[10px] font-bold text-green-600 uppercase tracking-widest">{t.pdf_config.trees}</span>
+                                            <span className="text-[10px] text-slate-400 font-medium mt-1">{t.pdf_config.trees_planted}</span>
+                                        </div>
+
+                                        {/* Coal Saved */}
+                                        <div className="bg-white/80 backdrop-blur-sm p-2 rounded-lg border border-emerald-100 shadow-sm flex flex-col items-center text-center">
+                                            <div className="p-2 bg-slate-100 rounded-full mb-1 text-slate-600">
+                                                <Factory size={18} />
+                                            </div>
+                                            <span className="text-lg font-black text-slate-700">
+                                                {formatNumber((customStats?.totalSolarGen || 0) * COAL_KG_PER_KWH / 1000)}
+                                            </span>
+                                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{t.pdf_config.ton_coal}</span>
+                                            <span className="text-[10px] text-slate-400 font-medium mt-1">{t.pdf_config.coal_saved}</span>
+                                        </div>
+
+                                        {/* Oil Saved */}
+                                        <div className="bg-white/80 backdrop-blur-sm p-2 rounded-lg border border-emerald-100 shadow-sm flex flex-col items-center text-center">
+                                            <div className="p-2 bg-blue-100 rounded-full mb-1 text-blue-600">
+                                                <Fuel size={18} />
+                                            </div>
+                                            <span className="text-lg font-black text-slate-700">
+                                                {formatNumber((customStats?.totalSolarGen || 0) * OIL_LITERS_PER_KWH)}
+                                            </span>
+                                            <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">{t.pdf_config.liters}</span>
+                                            <span className="text-[10px] text-slate-400 font-medium mt-1">{t.pdf_config.oil_saved}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     {/* PAGE 3: FINANCIAL ANALYSIS */}
                     <div id="report-page-3" className="pt-4 px-10 pb-10 min-h-[1650px] bg-white flex flex-col items-stretch gap-2">
-                        {/* Premium Header Mini */}
-                        <div className="flex justify-between items-end border-b border-blue-900 pb-1 mb-1">
-                            <div className="flex items-center gap-2">
-                                <img src={casLogoReport} className="h-6 w-auto object-contain" alt="CAS Logo" />
+                        {/* Premium Header */}
+                        <div className="flex justify-between items-end border-b-2 border-blue-900 pb-4 mb-4">
+                            <div className="flex items-center gap-4">
+                                <img src={casLogoReport} className="h-16 w-auto object-contain" alt="CAS Logo" />
                                 <div className="flex flex-col">
-                                    <h1 className="text-base font-black text-blue-900 uppercase leading-none text-left">{t.pdf.header_finance || "PHÂN TÍCH TÀI CHÍNH"}</h1>
-                                    <h2 className="text-[10px] font-bold text-blue-800 uppercase leading-tight text-left">{projectName || "SOLAR PROJECT"}</h2>
+                                    <h1 className="text-2xl font-black text-blue-900 uppercase leading-none text-left">{t.pdf.header_finance || "PHÂN TÍCH TÀI CHÍNH"}</h1>
+                                    <h2 className="text-xl font-bold text-blue-800 uppercase leading-tight text-left">{projectName || "SOLAR PROJECT"}</h2>
                                 </div>
                             </div>
                             <div className="text-right">
-                                <p className="text-[8px] text-slate-500 font-medium italic">{t.pdf.report_date}: {new Date().toLocaleDateString(lang === 'en' ? 'en-US' : 'vi-VN')}</p>
+                                <p className="text-xs text-slate-500 font-medium italic">{t.pdf.report_date}: {new Date().toLocaleDateString(lang === 'en' ? 'en-US' : 'vi-VN')}</p>
                             </div>
                         </div>
+                        {/* 10. SCENARIO COMPARISON TABLE */}
+                        <h3 className="text-blue-700 font-bold text-lg mb-2 flex items-center gap-2">
+                            <div className="p-1.5 bg-indigo-50 rounded text-indigo-600"><BarChart2 size={18} /></div>
+                            10. {t.pdf.scenario_comparison || "Phân tích Hiệu quả Đầu tư (So sánh Kịch bản)"}
+                        </h3>
+                        <div className="bg-white p-3 rounded-xl shadow-sm border border-slate-100 mb-4">
+                            <div className="rounded-lg border border-slate-200 overflow-hidden">
+                                <table className="w-full text-[9px] text-left">
+                                    <thead className="bg-slate-50 text-slate-500 uppercase font-bold">
+                                        <tr>
+                                            <th className="p-2 border-r border-slate-100">{t.pdf.col_scenario || "Kịch bản"}</th>
+                                            <th className="p-2 text-center border-r border-slate-100">{t.pdf.col_capacity || "Công suất"}</th>
+                                            <th className="p-2 text-right border-r border-slate-100">{t.pdf.col_capex || "Vốn (CAPEX) (VND)"}</th>
+                                            <th className="p-2 text-right border-r border-slate-100">{t.pdf.col_saving || "Tiết kiệm (N1) (VND)"}</th>
+                                            <th className="p-2 text-right text-purple-600 border-r border-slate-100">{t.pdf.col_lcoe || "LCOE (VNĐ/kWh)"}</th>
+                                            <th className="p-2 text-right text-emerald-600 border-r border-slate-100">{t.pdf.col_npv || "NPV (VND)"}</th>
+                                            <th className="p-2 text-right text-blue-600 border-r border-slate-100">{t.pdf.col_irr || "IRR"}</th>
+                                            <th className="p-2 text-right">{t.pdf.col_payback || "Hoàn vốn"}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {scenarios.map((s, i) => (
+                                            <tr key={i} className={targetKwp === s.kwp ? 'bg-indigo-50/50' : 'hover:bg-slate-50'}>
+                                                <td className="p-2 font-medium text-slate-700 border-r border-slate-100">{s.label}</td>
+                                                <td className="p-2 text-center font-bold border-r border-slate-100">{s.kwp} <small className="font-normal text-slate-400">kWp</small></td>
+                                                <td className="p-2 text-right text-slate-600 border-r border-slate-100">{formatMoney(s.capex)}</td>
+                                                <td className="p-2 text-right text-slate-600 border-r border-slate-100">{formatMoney(s.annualSaving)}</td>
+                                                <td className="p-2 text-right font-bold text-purple-600 border-r border-slate-100">{formatMoney(s.lcoe)}</td>
+                                                <td className="p-2 text-right font-bold text-emerald-600 border-r border-slate-100">{formatMoney(s.npv)}</td>
+                                                <td className="p-2 text-right font-bold text-blue-600 border-r border-slate-100">{s.irr.toFixed(1)}<small className="font-normal">%</small></td>
+                                                <td className="p-2 text-right font-bold text-slate-800">{s.paybackYears.toFixed(1)} <small className="font-normal text-slate-500">{lang === 'en' ? 'Years' : 'Năm'}</small></td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        {/* 11. CASH FLOW & ROI */}
                         <h3 className="text-blue-700 font-bold text-lg mb-3 flex items-center gap-2">
                             <div className="p-1.5 bg-blue-50 rounded text-blue-600"><TrendingUp size={18} /></div>
-                            8. {t.pdf.cash_flow_roi_title || "Phân tích Dòng tiền & ROI"}
+                            11. {t.pdf.cash_flow_roi_title || "Phân tích Dòng tiền & ROI"}
                         </h3>
-
-                        {/* FRAME 1: ENVIRONMENTAL IMPACT */}
-                        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
-                            <div className="mb-4 p-3 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl border border-emerald-100 relative overflow-hidden">
-                                <div className="absolute top-0 right-0 p-4 opacity-10">
-                                    <Leaf size={120} className="text-emerald-500 transform rotate-12" />
-                                </div>
-                                <h3 className="text-sm font-bold text-emerald-800 mb-2 flex items-center gap-2 relative z-10">
-                                    <Leaf size={14} className="text-emerald-600" />
-                                    {t.pdf_config.env_impact || "Hiệu quả Môi trường"}
-                                </h3>
-                                <p className="text-[10px] text-emerald-600 mb-3 max-w-[80%] relative z-10 font-medium">{t.pdf_config.env_desc}</p>
-
-                                <div className="grid grid-cols-3 gap-3 relative z-10">
-                                    {/* CO2 Saved */}
-                                    <div className="bg-white/80 backdrop-blur-sm p-2 rounded-lg border border-emerald-100 shadow-sm flex flex-col items-center text-center">
-                                        <div className="p-2 bg-emerald-100 rounded-full mb-1 text-emerald-600">
-                                            <CloudSun size={18} />
-                                        </div>
-                                        <span className="text-lg font-black text-slate-700">
-                                            {formatNumber((customStats?.totalSolarGen || 0) * CO2_KG_PER_KWH / 1000)}
-                                        </span>
-                                        <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">{t.pdf_config.ton_year}</span>
-                                        <span className="text-[10px] text-slate-400 font-medium mt-1">{t.pdf_config.co2_saved}</span>
-                                    </div>
-
-                                    {/* Trees Planted */}
-                                    <div className="bg-white/80 backdrop-blur-sm p-2 rounded-lg border border-emerald-100 shadow-sm flex flex-col items-center text-center">
-                                        <div className="p-2 bg-green-100 rounded-full mb-1 text-green-600">
-                                            <Trees size={18} />
-                                        </div>
-                                        <span className="text-lg font-black text-slate-700">
-                                            {formatNumber((customStats?.totalSolarGen || 0) * CO2_KG_PER_KWH * TREES_PER_CO2_KG)}
-                                        </span>
-                                        <span className="text-[10px] font-bold text-green-600 uppercase tracking-widest">{t.pdf_config.trees}</span>
-                                        <span className="text-[10px] text-slate-400 font-medium mt-1">{t.pdf_config.trees_planted}</span>
-                                    </div>
-
-                                    {/* Coal Saved */}
-                                    <div className="bg-white/80 backdrop-blur-sm p-2 rounded-lg border border-emerald-100 shadow-sm flex flex-col items-center text-center">
-                                        <div className="p-2 bg-slate-100 rounded-full mb-1 text-slate-600">
-                                            <Factory size={18} />
-                                        </div>
-                                        <span className="text-lg font-black text-slate-700">
-                                            {formatNumber((customStats?.totalSolarGen || 0) * COAL_KG_PER_KWH / 1000)}
-                                        </span>
-                                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{t.pdf_config.ton_coal}</span>
-                                        <span className="text-[10px] text-slate-400 font-medium mt-1">{t.pdf_config.coal_saved}</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
 
                         {/* FRAME 2: CASH FLOW CHART */}
                         <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
@@ -2423,25 +2827,25 @@ const SolarOptimizer = () => {
                     </div>
 
                     {/* PAGE 4: TECHNICAL SPECS & INVESTMENT ANALYSIS */}
-                    <div id="report-page-4" className="pt-4 px-10 pb-10 min-h-[1400px] bg-white flex flex-col items-stretch gap-2">
-                        {/* Premium Header Mini */}
-                        <div className="flex justify-between items-end border-b border-blue-900 pb-1 mb-1">
-                            <div className="flex items-center gap-2">
-                                <img src={casLogoReport} className="h-6 w-auto object-contain" alt="CAS Logo" />
+                    <div id="report-page-4" className="pt-4 px-10 pb-10 min-h-[1400px] bg-white flex flex-col items-stretch gap-4">
+                        {/* Premium Header */}
+                        <div className="flex justify-between items-end border-b-2 border-blue-900 pb-4 mb-4">
+                            <div className="flex items-center gap-4">
+                                <img src={casLogoReport} className="h-16 w-auto object-contain" alt="CAS Logo" />
                                 <div className="flex flex-col">
-                                    <h1 className="text-base font-black text-blue-900 uppercase leading-none text-left">{t.pdf.header_specs || "THÔNG SỐ CHI TIẾT"}</h1>
-                                    <h2 className="text-[10px] font-bold text-blue-800 uppercase leading-tight text-left">{projectName || "SOLAR PROJECT"}</h2>
+                                    <h1 className="text-2xl font-black text-blue-900 uppercase leading-none text-left">{t.pdf.header_specs || "THÔNG SỐ CHI TIẾT"}</h1>
+                                    <h2 className="text-xl font-bold text-blue-800 uppercase leading-tight text-left">{projectName || "SOLAR PROJECT"}</h2>
                                 </div>
                             </div>
                             <div className="text-right">
-                                <p className="text-[8px] text-slate-500 font-medium italic">{t.pdf.report_date}: {new Date().toLocaleDateString(lang === 'en' ? 'en-US' : 'vi-VN')}</p>
+                                <p className="text-xs text-slate-500 font-medium italic">{t.pdf.report_date}: {new Date().toLocaleDateString(lang === 'en' ? 'en-US' : 'vi-VN')}</p>
                             </div>
                         </div>
 
-                        {/* SECTION 10: DETAILED TECHNICAL SPECIFICATIONS (16 items) */}
+                        {/* SECTION 12: DETAILED TECHNICAL SPECIFICATIONS (16 items) */}
                         <h3 className="text-blue-700 font-bold text-lg mb-3 flex items-center gap-2">
                             <div className="p-1.5 bg-indigo-50 rounded text-indigo-600"><Settings size={18} /></div>
-                            10. {t.pdf.detailed_specs || "Thông số Kỹ thuật Chi tiết (16 Mục)"}
+                            12. {t.pdf.detailed_specs || "Thông số Kỹ thuật Chi tiết (16 Mục)"}
                         </h3>
 
                         {/* Frame 1: 16 Detailed Specs Table */}
@@ -2481,10 +2885,10 @@ const SolarOptimizer = () => {
                             </div>
                         </div>
 
-                        {/* SECTION 11: INVESTMENT SCENARIO COMPARISON */}
+                        {/* SECTION 13: ENERGY SCENARIO COMPARISON */}
                         <h3 className="text-blue-700 font-bold text-lg mb-3 flex items-center gap-2">
                             <div className="p-1.5 bg-emerald-50 rounded text-emerald-600"><TrendingUp size={18} /></div>
-                            11. {t.pdf.scenario_comparison || "So sánh Kịch bản Đầu tư"}
+                            13. {t.pdf.energy_scenario_comparison || "Năng lượng giữa các Kịch bản"}
                         </h3>
 
                         {/* Frame 2: Scenario Comparison Table */}
@@ -2527,7 +2931,17 @@ const SolarOptimizer = () => {
             }
 
             <aside className={`fixed inset-y-0 left-0 z-20 w-64 bg-slate-50 border-r border-slate-200 transform transition-transform duration-200 ease-in-out shrink-0 flex flex-col ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-                <div className="h-20 flex items-center justify-start pl-6 border-b border-blue-900 bg-gradient-to-r from-[#004e92] to-[#000428] cursor-pointer hover:opacity-95 transition-colors group" onClick={() => { setDesignMode(null); setProcessedData([]); }}>
+                <div className="h-20 flex items-center justify-start pl-6 border-b border-blue-900 bg-gradient-to-r from-[#004e92] to-[#000428] cursor-pointer hover:opacity-95 transition-colors group" onClick={() => {
+                    setDesignMode(null);
+                    setProcessedData([]);
+                    setRawData([]);
+                    setSolarLayers([]);
+                    setLoadTag({ label: '', isWeekendOff: false });
+                    setSolarMetadata({});
+                    setCustomStats(null);
+                    setScenarios([]);
+                    setActiveTab('dashboard');
+                }}>
                     <img src={casLogo} alt="CAS Logo" className="h-8 w-auto mr-3 transition-transform group-hover:scale-105" />
                     <div className="flex flex-col">
                         <span className="font-black text-sm leading-tight text-white drop-shadow-sm">SOLAR</span>
@@ -2561,7 +2975,7 @@ const SolarOptimizer = () => {
                     <div className="border-t border-slate-200 pt-2"><p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2 px-1">{t.input_data}</p>
                         <div className="space-y-2">
                             <div className="px-2 py-1.5 bg-white rounded border border-slate-200 text-xs shadow-sm group hover:border-blue-300 transition-colors">
-                                <div className="flex justify-between items-center"><span className="font-medium text-slate-700 flex items-center gap-1"><Zap size={12} className="text-amber-500" />{t.load_profile}</span><button onClick={() => fileInputRef.current?.click()} className="text-blue-600 hover:underline text-[10px]"><RefreshCw size={10} /></button></div><div className="text-[10px] text-slate-500 truncate">{loadTag.label ? t.status.loaded + loadTag.label : t.profile_types.none}</div>
+                                <div className="flex justify-between items-center"><span className="font-medium text-slate-700 flex items-center gap-1"><Zap size={12} className="text-amber-500" />{t.load_profile}</span><button onClick={() => fileInputRef.current?.click()} className="text-blue-600 hover:underline text-[10px]"><RefreshCw size={10} /></button></div><div className="text-[10px] text-slate-500 whitespace-normal">{loadTag.label ? t.status.loaded + loadTag.label : t.profile_types.none}</div>
                             </div>
                             <input type="file" ref={fileInputRef} accept=".csv,.txt,.xlsx,.xls" className="hidden" onChange={handleFileUpload} onClick={(e) => e.target.value = null} />
 
@@ -2625,7 +3039,7 @@ const SolarOptimizer = () => {
                                                 'bg-white text-red-700 border-red-300'
                                         }`}
                                     value={weatherScenario}
-                                    onChange={(e) => setWeatherScenario(e.target.value)}
+                                    onChange={(e) => handleWeatherChange(e.target.value)}
                                 >
                                     {Object.entries(WEATHER_SCENARIOS).map(([key, scenario]) => (
                                         <option key={key} value={key}>
@@ -2651,7 +3065,7 @@ const SolarOptimizer = () => {
                         </div>
                     </div>
                 </div>
-                <div className="p-2 border-t border-slate-200 text-[9px] text-slate-400 text-center">CPS Solar © 2026</div>
+                <div className="p-2 border-t border-slate-200 text-[9px] text-slate-400 text-center"><span className="font-bold">CPS Solar Solutions</span> © 2026 • Engineering Division</div>
             </aside>
 
             <main className={`flex-1 flex flex-col h-screen overflow-hidden relative transition-all duration-200 ${isSidebarOpen ? 'ml-64' : 'ml-0'}`}>
@@ -2683,14 +3097,14 @@ const SolarOptimizer = () => {
                                     {selectedProvince?.name}
                                 </span>
                                 <span className="text-[10px] text-slate-500 font-medium leading-none block pb-0.5">
-                                    {selectedProvince?.peakSunHours}h/ngày
+                                    {selectedProvince?.peakSunHours?.toFixed(2)}h/ngày
                                 </span>
                             </div>
                             <ChevronRight size={14} className={`text-slate-400 transition-transform ${showProvinceDropdown ? 'rotate-90' : ''}`} />
                         </div>
 
                         {showProvinceDropdown && (
-                            <div className="absolute top-full mt-2 left-4 w-72 max-h-80 bg-white border border-slate-200 rounded-xl shadow-2xl p-2 z-[100] overflow-y-auto overflow-x-hidden animate-in fade-in zoom-in duration-200">
+                            <div className="absolute top-full mt-2 left-4 w-60 max-h-80 bg-white border border-slate-200 rounded-xl shadow-2xl p-2 z-[100] overflow-y-auto overflow-x-hidden animate-in fade-in zoom-in duration-200">
                                 <div className="grid grid-cols-1 gap-1">
                                     {PROVINCES.map(p => {
                                         const style = getProvinceStyle(p.id);
@@ -2698,7 +3112,7 @@ const SolarOptimizer = () => {
                                         return (
                                             <div
                                                 key={p.id}
-                                                className={`flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer transition ${selectedProvince?.id === p.id ? 'bg-emerald-50 text-emerald-700' : 'hover:bg-slate-50 text-slate-600'}`}
+                                                className={`flex items-center justify-between gap-2 px-3 py-2 rounded-lg cursor-pointer transition ${selectedProvince?.id === p.id ? 'bg-emerald-50 text-emerald-700' : 'hover:bg-slate-50 text-slate-600'}`}
                                                 onClick={() => {
                                                     handleProvinceChange(p.id);
                                                     setShowProvinceDropdown(false);
@@ -2714,7 +3128,7 @@ const SolarOptimizer = () => {
                                                     </div>
                                                 </div>
                                                 <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${selectedProvince?.id === p.id ? 'bg-emerald-100' : 'bg-slate-100 text-slate-500'}`}>
-                                                    {p.peakSunHours}h
+                                                    {p.peakSunHours.toFixed(2)}h
                                                 </span>
                                             </div>
                                         );
@@ -2757,6 +3171,7 @@ const SolarOptimizer = () => {
                                 params={params}
                                 bessKwh={bessKwh}
                                 averageDayData={averageDayData}
+                                peakDayProfiles={peakDayProfiles}
                                 dailyStats={dailyStats}
                                 solarMetadata={solarMetadata}
                                 correlationData={correlationData}
@@ -2841,6 +3256,8 @@ const SolarOptimizer = () => {
                     </div>
                 </div>
             </main>
+
+
 
         </div >
     );

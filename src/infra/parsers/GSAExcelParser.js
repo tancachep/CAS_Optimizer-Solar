@@ -1,4 +1,4 @@
-import { generateSolarProfile } from './utils';
+import { generateSolarProfile } from './utils.js';
 
 export const parseGSAMapData = (workbook) => {
     const mapSheet = workbook.Sheets['Map_data'] || workbook.Sheets['Map data'];
@@ -302,9 +302,11 @@ export const parseGSAExcel = (input) => {
             }
 
             // Check Scale
+            // The values are Monthly Sums. If it's in MWh, the average monthly sum per hour might be ~5-50.
+            // If it's in kWh, it will be 1000x higher (5000-50000). So a threshold of 3000 is safe.
             let sum = 0; let count = 0;
             solarMap.forEach(v => { sum += v; count++; });
-            if (count > 0 && (sum / count) > 100) {
+            if (count > 0 && (sum / count) > 3000) {
                 const avg = sum / count;
                 log(`Detected High Values (Transposed Avg: ${avg.toFixed(1)}). Auto-scaling / 1000.`);
                 solarMap.forEach((v, k) => solarMap.set(k, v / 1000));
@@ -344,7 +346,7 @@ export const parseGSAExcel = (input) => {
             // Check Scale for standard parsed profiles too
             let sum = 0; let count = 0;
             solarMap.forEach(v => { sum += v; count++; });
-            if (count > 0 && (sum / count) > 100) {
+            if (count > 0 && (sum / count) > 3000) {
                 const avg = sum / count;
                 log(`Detected High Values (Standard Avg: ${avg.toFixed(1)}). Auto-scaling / 1000.`);
                 solarMap.forEach((v, k) => solarMap.set(k, v / 1000));

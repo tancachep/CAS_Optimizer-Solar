@@ -33,20 +33,33 @@ export const processExcelData = (arrayData) => {
         // Fix: Use Array.from to handle sparse arrays from Excel, preventing undefined in findIndex
         const rowStr = Array.from(row).map(cell => (cell === null || cell === undefined) ? '' : String(cell).toLowerCase());
 
-        // Load Column Detection
-        let pIdx = rowStr.findIndex(c => c && (
+        // Load Column Detection - Skip cells > 100 chars (likely notes/comments in NEW TEMPLATE files)
+        let pIdx = rowStr.findIndex(c => c && c.length < 100 && (
             c.includes('σ p') || c.includes('sum p') || c.includes('total p') || c.includes('Σ p') ||
             c.includes('p_tổng') || c.includes('p_tong') || c.includes('p tổng') ||
-            (c.includes('p') && c.includes('(kw)') && !c.includes('pa') && !c.includes('pb') && !c.includes('pc') && !c.includes('p_a') && !c.includes('p_b') && !c.includes('p_c'))
+            (c.includes('p') && c.includes('(kw)') && !c.includes('pa') && !c.includes('pb') && !c.includes('pc') && !c.includes('p_a') && !c.includes('p_b') && !c.includes('p_c')) ||
+            c === 'data' || c === 'load (kw)' || c === 'load' || (c.includes('load') && !c.includes('solar'))
         ));
-        if (pIdx === -1) pIdx = rowStr.findIndex(c => c === 'load (kw)' || c === 'load' || (c.includes('load') && !c.includes('solar')));
 
         if (pIdx !== -1) {
             headerRowIndex = i; loadColIdx = pIdx; foundLoadName = row[pIdx];
 
+            // Detect Unit from a separate 'Unit' row above the header (NEW TEMPLATE format)
+            // Scan rows above header for a row like ["Unit", "kW"]
+            for (let u = Math.max(0, i - 5); u < i; u++) {
+                const uRow = arrayData[u];
+                if (uRow && String(uRow[0]).toLowerCase().includes('unit')) {
+                    const unitVal = String(uRow[1] || '').toLowerCase().trim();
+                    if (unitVal === 'w') { scaleFactor = 0.001; foundLoadName += ' (W)'; }
+                    else if (unitVal === 'kwh') { foundLoadName += ' (kWh)'; }
+                    else if (unitVal === 'kw') { foundLoadName += ' (kW)'; }
+                    break;
+                }
+            }
+
             // Time Column Detection
             // 1. Try standard keywords
-            const potentialTimeIndices = rowStr.map((c, idx) => (c.includes('time') || c.includes('date') || c.includes('bắt đầu') || c.includes('kết thúc') || c.includes('vlookup')) ? idx : -1).filter(idx => idx !== -1);
+            const potentialTimeIndices = rowStr.map((c, idx) => (idx !== loadColIdx) && c.length < 100 && (c.includes('time') || c.includes('date') || c.includes('bắt đầu') || c.includes('kết thúc') || c.includes('vlookup') || c.includes('month/day')) ? idx : -1).filter(idx => idx !== -1);
 
             if (potentialTimeIndices.length > 0) {
                 for (let tCandidate of potentialTimeIndices) {
@@ -85,41 +98,64 @@ export const processExcelData = (arrayData) => {
         if (rawTime === undefined || rawLoad === undefined) continue;
 
         // Custom JANDS Parsing: "MM DD HH mm" (05 07 07 00)
-        // Check strict format to avoid false positives
+        // OR mixed formats like "13/01/2025 00:00"
         let finalTime = rawTime;
-        if (typeof rawTime === 'string' && /^\d{2}\s\d{2}\s\d{2}\s\d{2}$/.test(rawTime.trim())) {
-            const parts = rawTime.trim().split(/\s+/);
-            const mon = parseInt(parts[0]);
-            const day = parseInt(parts[1]);
-            const HH = parts[2];
-            const mm = parts[3];
 
-            // Infer Year based on Month
-            // If we have startYear/endYear (e.g. 2024-2025):
-            // Nov (11) -> 2024. May (05) -> 2025.
-            // Heuristic: If mon > 6 (July+), use startYear. Else use endYear.
-            // Adjust heuristic based on actual start/end months if needed, 
-            // but simple split at mid-year often works for 12-month trailing data.
-            // Let's use the explicit range if available.
-            let y = endYear;
-            if (foundYears && startYear !== endYear) {
-                // If the month is part of the "start" segment (e.g. Nov, Dec)
-                // Assuming data is continuous.
-                // Simple logic: If month >= StartMonth (of the range), use StartYear.
-                // Parsing range string again or storing startMonth in extract logic would be better.
-                // Re-parsing simplicity:
-                const row3Header = arrayData.slice(0, 5).find(r => r && String(r[0]).includes('from'));
-                if (row3Header) {
-                    const m2 = String(row3Header[0]).match(/from\s+(\d+)\/(\d+)\/(\d+)/);
-                    if (m2 && parseInt(m2[2]) === mon) y = parseInt(m2[3]);
-                    else if (mon > 6 && startYear < endYear) y = startYear; // Fallback
-                    else y = endYear;
-                } else if (mon > 6 && startYear < endYear) {
-                    y = startYear;
+        if (typeof rawTime === 'number') {
+            // Excel Serial
+            const jsDate = new Date(Math.round((rawTime - 25569) * 86400 * 1000));
+            // Format directly to ISO-like string
+            const y = jsDate.getFullYear();
+            const mon = jsDate.getMonth() + 1;
+            const date = jsDate.getDate();
+            const h = jsDate.getHours();
+            const m = jsDate.getMinutes();
+            finalTime = `${y}-${String(mon).padStart(2, '0')}-${String(date).padStart(2, '0')} ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        }
+        else if (typeof rawTime === 'string') {
+            const cleanStr = rawTime.trim();
+            // Check for format containing '/' and ':'
+            if (cleanStr.includes('/') && cleanStr.includes(':')) {
+                const [dPart, tPart] = cleanStr.split(/\s+/);
+                if (dPart && tPart) {
+                    const dParts = dPart.split('/');
+                    const tParts = tPart.split(':');
+
+                    let day = 1, month = 1, year = endYear || new Date().getFullYear();
+                    if (dParts.length === 2) {
+                        // "M/D"
+                        month = parseInt(dParts[0]);
+                        day = parseInt(dParts[1]);
+                    } else if (dParts.length === 3) {
+                        // "D/M/Y" or "Y/M/D" depending on parser but here assuming DD/MM/YYYY
+                        day = parseInt(dParts[0]);
+                        month = parseInt(dParts[1]);
+                        year = parseInt(dParts[2]);
+                    }
+
+                    const hr = parseInt(tParts[0]);
+                    const min = parseInt(tParts[1]);
+
+                    if (!isNaN(day) && !isNaN(month) && !isNaN(hr)) {
+                        finalTime = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')} ${String(hr).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+                    }
                 }
             }
+            // Legacy check for "05 07 07 00"
+            else if (/^\d{2}\s\d{2}\s\d{2}\s\d{2}$/.test(cleanStr)) {
+                const parts = cleanStr.split(/\s+/);
+                const mon = parseInt(parts[0]);
+                const day = parseInt(parts[1]);
+                const HH = parts[2];
+                const mm = parts[3];
 
-            finalTime = `${y}-${String(mon).padStart(2, '0')}-${String(day).padStart(2, '0')} ${HH}:${mm}`;
+                let y = endYear;
+                if (foundYears && startYear !== endYear) {
+                    if (mon > 6 && startYear < endYear) y = startYear;
+                    else y = endYear;
+                }
+                finalTime = `${y}-${String(mon).padStart(2, '0')}-${String(day).padStart(2, '0')} ${HH}:${mm}`;
+            }
         }
 
         let loadKw = parseFloat(rawLoad);

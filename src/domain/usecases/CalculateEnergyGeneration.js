@@ -45,35 +45,51 @@ export const execute = (
     const losses = techParams.losses || {};
     const safeLoss = (val) => isNaN(Number(val)) ? 0 : Number(val);
     const totalLossPct = safeLoss(losses.temp) + safeLoss(losses.soiling) + safeLoss(losses.cable) + safeLoss(losses.inverter);
-    const systemDerate = 1 - (totalLossPct / 100);
+
+    // If the data is already an Actual Yield profile (like PVSyst PVOUT), do not double-penalize
+    const isActualYield = techParams.isActualYield === true;
+    const systemDerate = isActualYield ? 1.0 : 1 - (totalLossPct / 100);
 
     // Weather Scenario Derate Factor (for bad weather simulation)
-    const weatherDerate = isNaN(Number(techParams.weatherDerate)) ? 1.0 : Number(techParams.weatherDerate);
+    const weatherDerate = isActualYield ? 1.0 : (isNaN(Number(techParams.weatherDerate)) ? 1.0 : Number(techParams.weatherDerate));
 
     // Sanitize System Size
     const safeSystemSize = isNaN(Number(systemSize)) ? 0 : Number(systemSize);
 
     // --- BESS PARAMS ---
-    const CHARGE_EFF = 0.95;
-    const DISCHARGE_EFF = 0.95;
-    const DOD_LIMIT = 0.90;
+    // Use techParams or defaults. Round Trip Eff -> Single Way = sqrt(RT)
+    const rtEff = techParams.bessEffRoundTrip !== undefined ? Number(techParams.bessEffRoundTrip) : 0.90; // Default 90% RT (~95% one way)
+    const singleWayEff = Math.sqrt(rtEff);
+
+    // Explicit or Derived
+    const CHARGE_EFF = singleWayEff;
+    const DISCHARGE_EFF = singleWayEff;
+
+    const DOD_LIMIT = techParams.bessDod !== undefined ? Number(techParams.bessDod) : 0.90;
     const minSocKwh = bessCapacityKwh * (1 - DOD_LIMIT);
 
-    // Helper: Determine TOU Type
+    // Helper: Determine TOU Type (EVN Vietnam)
     const getTouType = (dateOrTimestamp) => {
         const date = (dateOrTimestamp instanceof Date) ? dateOrTimestamp : new Date(dateOrTimestamp?.timestamp || dateOrTimestamp);
         if (isNaN(date.getTime())) return 'NORMAL'; // Fallback if invalid
 
         const h = date.getHours();
+        const m = date.getMinutes();
+        const totalMin = h * 60 + m;
         const d = date.getDay();
-        if (d === 0) {
-            // Sunday: No Peak hours. Normal: 04h-22h, Off-Peak: 22h-04h
-            if (h >= 22 || h < 4) return 'OFF_PEAK';
-            return 'NORMAL';
+
+        // Off-peak: 22:00 - 04:00 (all days)
+        if (totalMin >= 22 * 60 || totalMin < 4 * 60) return 'OFF_PEAK';
+
+        // Peak: 9:30-11:30 and 17:00-20:00 (Mon-Sat only, Sunday = no peak)
+        if (d !== 0) {
+            if ((totalMin >= 9 * 60 + 30 && totalMin < 11 * 60 + 30) ||
+                (totalMin >= 17 * 60 && totalMin < 20 * 60)) {
+                return 'PEAK';
+            }
         }
-        // standard VN logic
-        if ((h >= 9 && h < 11) || (h >= 17 && h < 20)) return 'PEAK';
-        if (h >= 22 || h < 4) return 'OFF_PEAK';
+
+        // Normal (Bình thường)
         return 'NORMAL';
     };
 
@@ -211,6 +227,7 @@ export const execute = (
 
         hourlyBatteryData.push({
             date: point.date,
+            timeStep: timeFactor,
             soc: currentSoc,
             charge: hourlyChargeFromSolar + hourlyChargeFromGrid,
             chargeFromSolar: hourlyChargeFromSolar,

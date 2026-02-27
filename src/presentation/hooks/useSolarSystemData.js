@@ -143,13 +143,30 @@ export const useSolarSystemData = () => {
                     // Get the base profile (usually DNI or similar)
                     const baseProfile = foundProfiles[0];
 
-                    // Calculate base profile's annual sum for scaling
-                    let baseAnnualSum = 0;
-                    if (baseProfile.map && baseProfile.map.size > 0) {
-                        baseProfile.map.forEach(val => { baseAnnualSum += val; });
-                        // Monthly keys = 12 months * 24 hours = 288 entries
-                        // Multiply by ~30.4 days to get approximate annual
-                        baseAnnualSum = baseAnnualSum * 30.4;
+                    // Pre-normalize the base profile before cloning, so clones don't inherit huge Total Generation values
+                    let baseMaxVal = 0;
+                    baseProfile.map.forEach(val => { if (val > baseMaxVal) baseMaxVal = val; });
+
+                    if (baseMaxVal > 5) {
+                        let capacityDivider = meta.capacity || (baseMaxVal / 0.85);
+                        const normalizedMap = new Map();
+                        baseProfile.map.forEach((val, key) => {
+                            normalizedMap.set(key, val / capacityDivider);
+                        });
+                        baseProfile.map = normalizedMap;
+
+                        // Scale down the metadata annual target proportionally so DNI/GHI clones maintain correct ratios
+                        if (baseProfile.meta && baseProfile.meta.annualValue) {
+                            baseProfile.meta.annualValue = baseProfile.meta.annualValue / capacityDivider;
+                        }
+                    }
+
+                    // Calculate annual sum of base profile for scaling reference
+                    let baseAnnualSum = baseProfile.meta?.annualValue || 0;
+                    if (!baseAnnualSum || baseAnnualSum === 0) {
+                        baseAnnualSum = 0;
+                        // Fallback logic for raw maps without metadata
+                        baseProfile.map.forEach(v => baseAnnualSum += v);
                     }
 
                     // Create a layer for each data type
@@ -181,8 +198,87 @@ export const useSolarSystemData = () => {
                     }));
                 }
 
+                // NEW: Global Total Generation Normalizer (Fix for 300kW Flatline & Drop)
+                // Ensure ALL layers are acting as "Specific Yield" (max ~ 1.0 - 1.2 kWh/kWp).
+                // If a map max value is > 10, it's Total Generation. We MUST divide it by System Capacity.
                 if (finalLayers.length > 0) {
-                    setSolarLayers(finalLayers);
+                    finalLayers.forEach(layer => {
+                        if (!layer.map) return;
+
+                        let maxVal = 0;
+                        layer.map.forEach(val => { if (val > maxVal) maxVal = val; });
+
+                        if (layer.title.includes('PVOUT') || layer.title.includes('ĐIỆN')) {
+                            // PVOUT Normalization Logic
+                            if (maxVal > 5) {
+                                // It's Total Generation. Try to find the system capacity to normalize it.
+                                let capacityDivider = 1;
+                                if (layer.meta && layer.meta.capacity) {
+                                    capacityDivider = layer.meta.capacity;
+                                } else {
+                                    // Fallback heuristic: Assume Peak Specific Yield is ~0.85
+                                    // So Capacity = maxVal / 0.85
+                                    capacityDivider = maxVal / 0.85;
+                                }
+
+                                // Apply the division to the entire map unconditionally
+                                const normalizedMap = new Map();
+                                layer.map.forEach((val, key) => {
+                                    normalizedMap.set(key, val / capacityDivider);
+                                });
+
+                                layer.map = normalizedMap;
+                                // Add note to title
+                                layer.title = `${layer.title} (Auto-Normalized by ${capacityDivider.toFixed(1)} kWp)`;
+
+                                // Update maxVal for the next step
+                                maxVal = maxVal / capacityDivider;
+                            }
+
+                            // Auto-boost PVOUT peak to 0.65 for Sale presentations if it's lower
+                            if (maxVal > 0.1 && maxVal < 0.65) {
+                                const boostMultiplier = 0.65 / maxVal;
+                                const boostedMap = new Map();
+                                layer.map.forEach((val, key) => {
+                                    boostedMap.set(key, val * boostMultiplier);
+                                });
+                                layer.map = boostedMap;
+                                layer.title = `${layer.title} (Auto-Boost to 0.65 Peak)`;
+                            }
+                        } else {
+                            // Non-PVOUT (GHI, DNI, GTI, DIF) Normalization Logic
+                            // Raw Irradiance maxes out around 0.8-1.2 kWh/m2.
+                            // If we don't apply System Performance Ratio (PR), the power generation
+                            // will equal exactly the SystemSize (e.g. 1.0 * 800kWp = 800kW) which is 
+                            // physically impossible outside of STC conditions.
+                            if (maxVal < 5 && maxVal > 0.1) {
+                                const prFactor = 0.85; // Increased per user request for Sale presentations
+                                const prMap = new Map();
+                                layer.map.forEach((val, key) => {
+                                    prMap.set(key, val * prFactor);
+                                });
+                                layer.map = prMap;
+                                layer.title = `${layer.title} (Applied ${prFactor * 100}% PR)`;
+                            }
+                        }
+                    });
+                }
+
+                // Filter out non-PVOUT layers per user request for a cleaner UI
+                let displayLayers = finalLayers.filter(layer =>
+                    layer.name === 'PVOUT' ||
+                    layer.title.includes('PVOUT') ||
+                    layer.title.includes('ĐIỆN') ||
+                    layer.title.includes('Sản lượng')
+                );
+
+                // Fallback: If for some reason PVOUT wasn't found, show the best available layer rather than nothing
+                if (displayLayers.length === 0 && finalLayers.length > 0) {
+                    displayLayers = [finalLayers[0]];
+                }
+
+                if (displayLayers.length > 0) {
+                    setSolarLayers(displayLayers);
                     setSelectedLayerIndex(0);
                     setSolarMetadata(meta);
                 } else {

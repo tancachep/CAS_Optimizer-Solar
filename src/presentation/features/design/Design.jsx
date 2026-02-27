@@ -1,6 +1,8 @@
 import { useEffect } from 'react';
-import { Zap, RefreshCw, BatteryCharging, Coins, Settings, Wand2, Target, ChevronDown, ShieldCheck } from 'lucide-react';
+import { Zap, RefreshCw, BatteryCharging, Coins, Settings, Wand2, Target, ChevronDown, ShieldCheck, HelpCircle } from 'lucide-react';
 import { EVN_TARIFFS, getTariffOptions, getVoltageLevelOptions } from '../../../data/evn_tariffs';
+import { execute as verifyTechnicalConfig } from '../../../domain/usecases/VerifyTechnicalConfig';
+import { INVERTER_DB, PANEL_SPECS } from '../../../data/sources/HardwareDatabase';
 
 export const Design = ({
     inv1Id, setInv1Id,
@@ -35,9 +37,29 @@ export const Design = ({
 }) => {
     // Auto-update prices when tariff or voltage level changes
     useEffect(() => {
-        if (!tariffCategory || !voltageLevel) return;
+        if (!tariffCategory) return;
+
         const tariff = EVN_TARIFFS[tariffCategory];
         if (tariff) {
+            // If voltageLevel is missing or not in the current tariff category, 
+            // auto-select the first available one to prevent empty selection
+            const isValidLevel = tariff.voltage_levels.some(v => v.id === voltageLevel);
+
+            if (!voltageLevel || !isValidLevel) {
+                if (tariff.voltage_levels.length > 0) {
+                    const firstLevel = tariff.voltage_levels[0];
+                    setVoltageLevel(firstLevel.id);
+                    setParams(p => ({
+                        ...p,
+                        pricePeak: firstLevel.prices.peak,
+                        priceNormal: firstLevel.prices.normal,
+                        priceOffPeak: firstLevel.prices.off_peak
+                    }));
+                }
+                return;
+            }
+
+            // Normal update when valid level exists
             const level = tariff.voltage_levels.find(v => v.id === voltageLevel);
             if (level && level.prices) {
                 setParams(p => ({
@@ -48,7 +70,7 @@ export const Design = ({
                 }));
             }
         }
-    }, [tariffCategory, voltageLevel, setParams]);
+    }, [tariffCategory, voltageLevel, setVoltageLevel, setParams]);
 
     const dt = {
         vi: {
@@ -89,7 +111,19 @@ export const Design = ({
             bess_custom: "Tùy chỉnh",
             custom_inv: "Tùy chỉnh",
             power_per_unit: "CÔNG SUẤT MỖI MÁY (kW)",
-            expert_suggest_btn: "Gợi ý Chuyên gia (Safe Fit)"
+            expert_suggest_btn: "Gợi ý Chuyên gia (Safe Fit)",
+            tip_dc_ac: "Tỷ lệ DC/AC > 1 giúp tối ưu hiệu quả đầu tư, tận dụng công suất phát khi nắng yếu.",
+            tip_bess_eff: "Hiệu suất nạp/xả khứ hồi. Ví dụ: Nạp 10kWh, lấy ra được 9kWh = 90%.",
+            tip_dod: "Mức xả sâu tối đa cho phép để bảo vệ tuổi thọ pin. DoD 90% = Chỉ xả 90% dung lượng.",
+            tip_magic: "Tự chọn Inverter phù hợp (DC/AC ~ 1.25) và gợi ý Pin lưu trữ cơ bản (~20% công suất hệ mặt trời).",
+            tip_expert: "Tính toán theo tải thực tế thấp nhất (tháng thấp nhất, giờ nắng đỉnh 11-13h) để đảm bảo hệ thống không bị thừa điện, ngay cả khi không có Pin.",
+            tip_opt_no_bess: "Tự động quét và chọn quy mô lắp đặt mặt trời mang lại hiệu quả kinh tế (NPV/IRR) cao nhất mà không cần lắp Pin lưu trữ.",
+            tip_opt_bess_fixed: "Giữ nguyên công suất mặt trời hiện tại, chỉ tìm quy mô Pin lưu trữ (kWh) tối ưu nhất về mặt tài chính.",
+            tip_opt_all: "Tự động tìm kiếm sự kết hợp hoàn hảo giữa công suất mặt trời và Pin lưu trữ để đạt lợi nhuận cao nhất.",
+            dc_ac_ratio: "Tỷ lệ DC/AC (Oversizing)",
+            weather_derate: "Hệ số Thời tiết (%)",
+            bess_rt_eff: "Hiệu suất (RT) %",
+            bess_dod_limit: "DoD Giới hạn %",
         },
         en: {
             title_inverter: "Inverter Configuration",
@@ -129,7 +163,19 @@ export const Design = ({
             bess_custom: "Custom",
             custom_inv: "Custom Size",
             power_per_unit: "POWER PER UNIT (kW)",
-            expert_suggest_btn: "Expert Suggest (Safe Fit)"
+            expert_suggest_btn: "Expert Suggest (Safe Fit)",
+            tip_dc_ac: "DC/AC ratio > 1 optimizes investment by utilizing generation during low irradiation conditions.",
+            tip_bess_eff: "Round-trip efficiency. E.g., Charge 10kWh, discharge 9kWh = 90%.",
+            tip_dod: "Depth of Discharge: Max percentage of battery capacity that can be discharged to protect battery life.",
+            tip_magic: "Auto-select matching Inverter (DC/AC ~ 1.25) and suggest basic BESS (~20% of solar capacity).",
+            tip_expert: "Calculates based on lowest actual load (min month, peak sun 11-13h) to ensure zero energy waste, even without batteries.",
+            tip_opt_no_bess: "Automatically scans and selects the solar capacity that yields the highest financial return (NPV/IRR) without BESS.",
+            tip_opt_bess_fixed: "Keeps current solar capacity fixed, and only finds the most financially optimal BESS size (kWh).",
+            tip_opt_all: "Automatically searches for the perfect combination of solar and storage capacity for maximum profitability.",
+            dc_ac_ratio: "DC/AC Ratio (Oversizing)",
+            weather_derate: "Weather Derate (%)",
+            bess_rt_eff: "Round-trip Eff. (RT) %",
+            bess_dod_limit: "DoD Limit %",
         }
     }[lang];
     return (
@@ -146,30 +192,43 @@ export const Design = ({
                         <div className="flex items-center gap-2">
                             <button
                                 onClick={handleMagicSuggest}
-                                title={dt.magic_btn}
-                                className="flex items-center gap-1.5 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-[10px] font-bold transition shadow-sm"
+                                className="flex items-center gap-1.5 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-[10px] font-bold transition shadow-sm group relative cursor-help"
                             >
                                 <Wand2 size={12} />
                                 <span>{dt.magic_btn}</span>
+                                <div className="absolute top-full mt-2 left-0 w-48 p-2 bg-slate-800 text-white text-[9px] rounded shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 font-normal normal-case leading-tight whitespace-normal">
+                                    {dt.tip_magic}
+                                    <div className="absolute bottom-full left-4 border-4 border-transparent border-b-slate-800"></div>
+                                </div>
                             </button>
                             <button
                                 onClick={() => handleSuggestSafeCapacity(processedData)}
-                                title={dt.expert_suggest_btn}
-                                className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded text-[10px] font-bold transition shadow-sm"
+                                className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded text-[10px] font-bold transition shadow-sm group relative cursor-help"
                             >
                                 <ShieldCheck size={12} />
                                 <span>{dt.expert_suggest_btn}</span>
+                                <div className="absolute top-full mt-2 left-0 w-48 p-2 bg-slate-800 text-white text-[9px] rounded shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 font-normal normal-case leading-tight whitespace-normal">
+                                    {dt.tip_expert}
+                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 border-4 border-transparent border-b-slate-800"></div>
+                                </div>
                             </button>
                             <button
                                 onClick={() => handleOptimizeNoBess(processedData, params, finParams)}
-                                title={dt.optimize_no_bess}
-                                className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-bold transition shadow-sm"
+                                className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-bold transition shadow-sm group relative cursor-help"
                             >
                                 <Target size={12} />
                                 <span>{dt.optimize_no_bess}</span>
+                                <div className="absolute top-full mt-2 right-0 w-48 p-2 bg-slate-800 text-white text-[9px] rounded shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 font-normal normal-case leading-tight whitespace-normal">
+                                    {dt.tip_opt_no_bess}
+                                    <div className="absolute bottom-full right-4 border-4 border-transparent border-b-slate-800"></div>
+                                </div>
                             </button>
-                            <div className="text-[10px] px-2 py-0.5 bg-slate-100 rounded text-slate-500 font-medium whitespace-nowrap">
-                                DC/AC: {totalACPower > 0 ? (targetKwp / totalACPower).toFixed(2) : 'N/A'}
+                            <div className="text-[10px] px-2 py-0.5 bg-slate-100 rounded text-slate-500 font-medium whitespace-nowrap group relative cursor-help">
+                                <span>DC/AC: {totalACPower > 0 ? (targetKwp / totalACPower).toFixed(2) : 'N/A'}</span>
+                                <div className="absolute top-full mt-2 right-0 w-48 p-2 bg-slate-800 text-white text-[9px] rounded shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 font-normal normal-case leading-tight whitespace-normal">
+                                    {dt.tip_dc_ac}
+                                    <div className="absolute bottom-full right-4 border-4 border-transparent border-b-slate-800"></div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -227,6 +286,47 @@ export const Design = ({
                         <div className="pt-2 border-t border-slate-200 flex justify-between items-center text-[10px] text-slate-500 italic">
                             <span>{dt.ac_sync_msg} ({new Intl.NumberFormat('vi-VN').format(totalACPower)} kW)</span>
                         </div>
+
+                        {/* TECHNICAL VALIDATION WARNINGS */}
+                        {(() => {
+                            const selectedInv = INVERTER_DB.find(i => i.id === inv1Id);
+                            const validation = verifyTechnicalConfig(selectedInv, PANEL_SPECS, {
+                                totalPanels: Math.ceil((targetKwp * 1000) / PANEL_SPECS.power), // Estimate panels based on kWp
+                                inverterQty: inv1Qty
+                            });
+
+                            // DEBUG:
+                            // console.log('Validation:', validation);
+
+                            return (
+                                <div className="mt-2 space-y-1">
+                                    {/* DEBUG INFO - REMOVE LATER */}
+                                    {/* <div className="text-[9px] text-gray-400">
+                                        Panels: {Math.ceil((targetKwp * 1000) / PANEL_SPECS.power)} | 
+                                        InvQty: {inv1Qty} | 
+                                        Valid: {validation.isValid ? 'Yes' : 'No'} | 
+                                        Warns: {validation.warnings.length}
+                                    </div> */}
+
+                                    {validation.warnings.length > 0 ? (
+                                        validation.warnings.map((w, idx) => (
+                                            <div key={idx} className={`text-[10px] flex items-center gap-1.5 p-1.5 rounded ${w.level === 'error' ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-amber-50 text-amber-600 border border-amber-100'}`}>
+                                                <ShieldCheck size={12} />
+                                                <span className="font-bold">{w.msg}</span>
+                                            </div>
+                                        ))
+                                    ) : (
+                                        // Force show if high ratio but no warning (sanity check)
+                                        (targetKwp / totalACPower > 1.5) && (
+                                            <div className="text-[10px] flex items-center gap-1.5 p-1.5 rounded bg-orange-50 text-orange-600 border border-orange-100">
+                                                <ShieldCheck size={12} />
+                                                <span className="font-bold">Check: Ratio {(targetKwp / totalACPower).toFixed(2)} is High</span>
+                                            </div>
+                                        )
+                                    )}
+                                </div>
+                            );
+                        })()}
                     </div>
                 </div>
 
@@ -248,7 +348,38 @@ export const Design = ({
                                 </div>
                             ))}
                         </div>
-                        <div className="text-right text-[10px] font-bold text-slate-400">
+                        <div className="flex justify-between items-center pt-2 border-t border-slate-200 mt-2">
+                            <label className="text-[9px] font-bold text-slate-500 uppercase flex items-center gap-1 group relative cursor-help">
+                                {dt.dc_ac_ratio} <HelpCircle size={8} />
+                                <div className="absolute bottom-full mb-2 left-0 w-48 p-2 bg-slate-800 text-white text-[9px] rounded shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 font-normal normal-case leading-tight">
+                                    Tỷ lệ giữa công suất Pin và Inverter. Mặc định 1.25 (Oversizing 25%). Tăng lên để tối ưu hiệu quả đầu tư, giảm xuống để tránh cắt ngọn (clipping).
+                                    <div className="absolute top-full left-4 border-4 border-transparent border-t-slate-800"></div>
+                                </div>
+                            </label>
+                            <input
+                                type="number"
+                                step="0.05"
+                                min="1.0"
+                                max="2.0"
+                                value={techParams.oversizingRatio || 1.25}
+                                onChange={(e) => setTechParams(prev => ({ ...prev, oversizingRatio: Number(e.target.value) }))}
+                                className="w-16 p-1 border border-slate-300 rounded text-right text-xs font-bold text-slate-600 outline-none focus:border-blue-500"
+                            />
+                        </div>
+                        <div className="flex justify-between items-center pt-2 border-t border-slate-200 mt-2">
+                            <label className="text-[9px] font-bold text-blue-500 block">{dt.weather_derate}</label>
+                            <div className="relative w-20">
+                                <input
+                                    type="number"
+                                    min="0" max="100"
+                                    value={Math.round(techParams.weatherDerate * 100)}
+                                    onChange={(e) => setTechParams(prev => ({ ...prev, weatherDerate: Number(e.target.value) / 100 }))}
+                                    className="w-full p-1 pr-5 border border-blue-200 rounded text-right text-xs font-bold text-blue-600 outline-none"
+                                />
+                                <span className="absolute right-1.5 top-1.5 text-[9px] text-slate-400 select-none">%</span>
+                            </div>
+                        </div>
+                        <div className="text-right text-[10px] font-bold text-slate-400 mt-1">
                             {t.loss_labels.total_derate}: <span className="text-slate-500">{((1 - (Object.values(techParams.losses).reduce((a, b) => a + b, 0) / 100)) * 100).toFixed(1)}%</span>
                         </div>
                     </div>
@@ -263,17 +394,23 @@ export const Design = ({
                         <div className="flex gap-1.5 align-middle">
                             <button
                                 onClick={() => handleOptimizeBess(processedData, params, finParams)}
-                                title={dt.optimize_fixed_btn}
-                                className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-indigo-200 text-indigo-600 hover:bg-indigo-50 rounded text-[10px] font-bold transition shadow-sm"
+                                className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-indigo-200 text-indigo-600 hover:bg-indigo-50 rounded text-[10px] font-bold transition shadow-sm group relative cursor-help"
                             >
                                 <Target size={12} /> {dt.optimize_fixed_btn}
+                                <div className="absolute top-full mt-2 left-0 w-48 p-2 bg-slate-800 text-white text-[9px] rounded shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 font-normal normal-case leading-tight whitespace-normal">
+                                    {dt.tip_opt_bess_fixed}
+                                    <div className="absolute bottom-full left-4 border-4 border-transparent border-b-slate-800"></div>
+                                </div>
                             </button>
                             <button
                                 onClick={() => handleOptimize(processedData, params, finParams)}
-                                title={dt.optimize_btn}
-                                className="flex items-center gap-1.5 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-[10px] font-bold transition shadow-sm"
+                                className="flex items-center gap-1.5 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-[10px] font-bold transition shadow-sm group relative cursor-help"
                             >
                                 <Zap size={12} /> {dt.optimize_btn}
+                                <div className="absolute top-full mt-2 right-0 w-48 p-2 bg-slate-800 text-white text-[9px] rounded shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 font-normal normal-case leading-tight whitespace-normal">
+                                    {dt.tip_opt_all}
+                                    <div className="absolute bottom-full right-4 border-4 border-transparent border-b-slate-800"></div>
+                                </div>
                             </button>
                         </div>
                     </div>
@@ -297,6 +434,42 @@ export const Design = ({
                                 </select>
                             </div>
                         </div>
+
+                        {/* BESS Advanced Params */}
+                        {selectedBess !== 'none' && (
+                            <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-200">
+                                <div className="flex justify-between items-center bg-white p-1.5 px-2 rounded border border-slate-200">
+                                    <label className="text-[9px] font-bold text-slate-500 flex items-center gap-1 group relative cursor-help">
+                                        {dt.bess_rt_eff} <HelpCircle size={8} />
+                                        <div className="absolute bottom-full mb-2 left-0 w-40 p-2 bg-slate-800 text-white text-[9px] rounded shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 font-normal normal-case leading-tight">
+                                            {dt.tip_bess_eff}
+                                            <div className="absolute top-full left-4 border-4 border-transparent border-t-slate-800"></div>
+                                        </div>
+                                    </label>
+                                    <input
+                                        type="number"
+                                        value={Math.round((techParams.bessEffRoundTrip || 0.90) * 100)}
+                                        onChange={(e) => setTechParams(prev => ({ ...prev, bessEffRoundTrip: Number(e.target.value) / 100 }))}
+                                        className="w-12 text-right text-[10px] font-bold text-emerald-600 outline-none border-b border-emerald-100 focus:border-emerald-500"
+                                    />
+                                </div>
+                                <div className="flex justify-between items-center bg-white p-1.5 px-2 rounded border border-slate-200">
+                                    <label className="text-[9px] font-bold text-slate-500 flex items-center gap-1 group relative cursor-help">
+                                        {dt.bess_dod_limit} <HelpCircle size={8} />
+                                        <div className="absolute bottom-full mb-2 right-0 w-40 p-2 bg-slate-800 text-white text-[9px] rounded shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 font-normal normal-case leading-tight">
+                                            {dt.tip_dod}
+                                            <div className="absolute top-full right-4 border-4 border-transparent border-t-slate-800"></div>
+                                        </div>
+                                    </label>
+                                    <input
+                                        type="number"
+                                        value={Math.round((techParams.bessDod || 0.90) * 100)}
+                                        onChange={(e) => setTechParams(prev => ({ ...prev, bessDod: Number(e.target.value) / 100 }))}
+                                        className="w-12 text-right text-[10px] font-bold text-emerald-600 outline-none border-b border-emerald-100 focus:border-emerald-500"
+                                    />
+                                </div>
+                            </div>
+                        )}
 
                         {selectedBess === 'custom' && (
                             <div className="grid grid-cols-2 gap-2">

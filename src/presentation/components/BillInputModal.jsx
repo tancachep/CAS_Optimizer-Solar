@@ -40,6 +40,10 @@ export const BillInputModal = ({ onClose, onComplete, title = "Advanced EVN Bill
             business: "Kinh doanh",
             manufacture: "Sản xuất",
             admin: "Hành chính sự nghiệp",
+            retail_group: "GIÁ BÁN LẺ",
+            wholesale_group: "GIÁ BÁN BUÔN",
+            select_province: "Chọn tỉnh thành...",
+            search_placeholder: "Tìm kiếm...",
             voltage_level: "Cấp điện áp",
             "110kv_plus": "Cao thế (> 110kV)",
             "22kv_110kv": "Trung thế (22kV - 110kV)",
@@ -52,9 +56,7 @@ export const BillInputModal = ({ onClose, onComplete, title = "Advanced EVN Bill
             unit_kwh: "Đơn vị: kWh",
             unit_vnd: "Đơn vị: VNĐ",
             fill_all: "Dàn đều",
-            distribute: "Phân bổ mùa",
             sector: "Lĩnh vực / Đặc thù",
-            sector_help: "Dùng để giả lập biểu đồ tải (Load Curve) dựa trên tổng điện năng tháng.",
             sector_help: "Dùng để giả lập biểu đồ tải (Load Curve) dựa trên tổng điện năng tháng.",
             // specific sectors removed, utilizing dynamic keys from LOAD_PROFILES directly
             schedule: "Lịch làm việc",
@@ -73,6 +75,7 @@ export const BillInputModal = ({ onClose, onComplete, title = "Advanced EVN Bill
             generate: "Tạo Profile",
             view_year: "Năm",
             view_day: "Ngày (Mẫu)",
+            distribute: `Phân bổ\nmùa`,
             hourly_weights: "Tỷ trọng tiêu thụ theo giờ",
             months: ['Th1', 'Th2', 'Th3', 'Th4', 'Th5', 'Th6', 'Th7', 'Th8', 'Th9', 'Th10', 'Th11', 'Th12'],
             price_escalation: "Tăng giá điện dự kiến",
@@ -87,8 +90,11 @@ export const BillInputModal = ({ onClose, onComplete, title = "Advanced EVN Bill
             mon_fri_tip: "Thứ 2-6: 100% tải. Thứ 7: 40% tải nền. CN: 30% tải nền.",
             mon_sat_tip: "Thứ 2-7: 100% tải. Chủ nhật: 30% tải nền.",
             all_days_tip: "Cả tuần: 100% tải.",
-            auto_fill: "Bù tháng thiếu",
-            auto_fill_tip: "Dựa vào các tháng đã nhập để tính trung bình cho các tháng còn trống."
+            auto_fill: `Bù tháng\nthiếu`,
+            auto_fill_tip: "Dựa vào các tháng đã nhập để tính trung bình cho các tháng còn trống.",
+            region_north: "Miền Bắc",
+            region_central: "Miền Trung",
+            region_south: "Miền Nam"
         },
         en: {
             config: "Configuration",
@@ -99,6 +105,10 @@ export const BillInputModal = ({ onClose, onComplete, title = "Advanced EVN Bill
             business: "Business",
             manufacture: "Manufacturing",
             admin: "Administrative",
+            retail_group: "RETAIL PRICE",
+            wholesale_group: "WHOLESALE PRICE",
+            select_province: "Select Province...",
+            search_placeholder: "Search...",
             voltage_level: "Voltage Level",
             "110kv_plus": "High Voltage (> 110kV)",
             "22kv_110kv": "Medium Voltage (22kV - 110kV)",
@@ -150,7 +160,10 @@ export const BillInputModal = ({ onClose, onComplete, title = "Advanced EVN Bill
             schedule_help: "Defines which days have consumption. Non-working days will be simulated with minimal base load.",
             mon_fri_tip: "Mon-Fri: 100% load. Sat: 40% base. Sun: 30% base.",
             mon_sat_tip: "Mon-Sat: 100% load. Sunday: 30% base load.",
-            all_days_tip: "All days: 100% load."
+            all_days_tip: "All days: 100% load.",
+            region_north: "North",
+            region_central: "Central",
+            region_south: "South"
         }
     };
 
@@ -271,15 +284,35 @@ export const BillInputModal = ({ onClose, onComplete, title = "Advanced EVN Bill
         setMonthlyData(Array(12).fill(numValue));
     };
 
+    const [region, setRegion] = useState('north'); // north, central, south
+
     const handleSeasonalDist = (value) => {
         const base = value === '' ? 0 : parseInt(value);
         if (base === 0) return;
-        // Vietnamese seasonal curve (Peak in Summer May-Aug)
-        // Normalized so that the base value (Jan) is approximately 0.85 of peak
-        const coefficients = [0.85, 0.82, 0.9, 1.05, 1.15, 1.25, 1.3, 1.28, 1.15, 1.05, 0.95, 0.9];
-        // Calculate new values relative to the Jan input (first coefficient is 0.85)
-        // We want newData[0] to be close to 'base'
-        const newData = coefficients.map(c => Math.round((base / 0.85) * c));
+
+        let coefficients = [];
+
+        if (region === 'north') {
+            // MOVED: North - Summer Peak (May-Aug)
+            coefficients = [0.85, 0.82, 0.9, 1.05, 1.15, 1.25, 1.3, 1.28, 1.15, 1.05, 0.95, 0.9];
+        } else if (region === 'central') {
+            // Central - Summer Peak (May-Aug) similar to North but maybe sharper?
+            // Let's use a slightly modified curve or same for now if not specified.
+            // "May-August Peak" - using similar to North for now.
+            coefficients = [0.9, 0.9, 0.95, 1.1, 1.2, 1.25, 1.25, 1.2, 1.1, 1.0, 0.95, 0.9];
+        } else {
+            // South - Dry Season Peak (Mar-May) / Rainy Season Low (Aug-Oct) - but relatively flat
+            // "Flat / Slight Dry Season Peak"
+            coefficients = [0.98, 0.98, 1.05, 1.1, 1.1, 1.05, 1.0, 0.98, 0.98, 0.98, 0.98, 0.98];
+        }
+
+        // Normalize to keep average ~ base? Or base = Jan? 
+        // Existing logic: "Normalize so that base (Jan) is approx 0.85 of peak?" -> No, logic was "Input is Jan".
+        // Code: `const newData = coefficients.map(c => Math.round((base / coefficients[0]) * c));` 
+        // Wait, original code was: `Math.round((base / 0.85) * c)`. 0.85 was the first coeff.
+        // So generic formula: `Math.round((base / coefficients[0]) * c)`
+
+        const newData = coefficients.map(c => Math.round((base / coefficients[0]) * c));
         setMonthlyData(newData);
     };
 
@@ -404,7 +437,7 @@ export const BillInputModal = ({ onClose, onComplete, title = "Advanced EVN Bill
                             <div>
                                 <div className="flex items-center gap-2 mb-1.5 opacity-60">
                                     <Zap size={14} className="text-blue-600 fill-current" />
-                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">{t.config_label || "CẤU HÌNH"}</span>
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">{t.config}</span>
                                 </div>
                                 <h2 className="text-2xl font-black text-slate-800 tracking-tighter leading-tight">
                                     {t.evn_tariff}
@@ -422,7 +455,7 @@ export const BillInputModal = ({ onClose, onComplete, title = "Advanced EVN Bill
                                     className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-slate-700 text-[11px] font-bold cursor-pointer hover:border-blue-400 transition-all shadow-sm flex items-center justify-between group"
                                 >
                                     <span className={province ? 'text-slate-800' : 'text-slate-400'}>
-                                        {province || "Chọn tỉnh thành..."}
+                                        {province || t.select_province}
                                     </span>
                                     <MapPin size={14} className="text-slate-300 group-hover:text-blue-500 transition-colors" />
                                 </div>
@@ -432,7 +465,7 @@ export const BillInputModal = ({ onClose, onComplete, title = "Advanced EVN Bill
                                             <input
                                                 type="text"
                                                 autoFocus
-                                                placeholder="Tìm kiếm..."
+                                                placeholder={t.search_placeholder}
                                                 value={searchTerm}
                                                 onChange={(e) => setSearchTerm(e.target.value)}
                                                 className="w-full px-4 py-2 text-xs border border-slate-200 bg-white rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
@@ -468,7 +501,7 @@ export const BillInputModal = ({ onClose, onComplete, title = "Advanced EVN Bill
                                         }}
                                         className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-[11px] font-bold text-slate-700 focus:outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-blue-400 transition-all appearance-none cursor-pointer"
                                     >
-                                        <optgroup label="GIÁ BÁN LẺ">
+                                        <optgroup label={t.retail_group}>
                                             {Object.entries(EVN_TARIFFS)
                                                 .filter(([_, g]) => g.group === 'retail')
                                                 .map(([key, group]) => (
@@ -477,7 +510,7 @@ export const BillInputModal = ({ onClose, onComplete, title = "Advanced EVN Bill
                                                     </option>
                                                 ))}
                                         </optgroup>
-                                        <optgroup label="GIÁ BÁN BUÔN">
+                                        <optgroup label={t.wholesale_group}>
                                             {Object.entries(EVN_TARIFFS)
                                                 .filter(([_, g]) => g.group === 'wholesale')
                                                 .map(([key, group]) => (
@@ -684,39 +717,64 @@ export const BillInputModal = ({ onClose, onComplete, title = "Advanced EVN Bill
                             {/* 3. Monthly Input Grid */}
                             <div className="bg-white rounded-[32px] border border-slate-100 p-6 space-y-6 shadow-sm">
                                 <div className="flex items-center justify-between px-2">
-                                    <div className="flex items-center gap-4">
-                                        <div className="p-2.5 bg-blue-50 text-blue-600 rounded-2xl shadow-sm border border-blue-100">
-                                            <Table size={20} />
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                        <div className="p-1.5 bg-blue-50 text-blue-600 rounded-xl shadow-sm border border-blue-100 shrink-0">
+                                            <Table size={14} />
                                         </div>
-                                        <h4 className="text-lg font-black text-slate-700 tracking-tight uppercase leading-none">{t.monthly_inputs}</h4>
+                                        <h4 className="text-[11px] font-black text-slate-700 tracking-tight uppercase leading-tight">{t.monthly_inputs}</h4>
                                     </div>
 
-                                    <div className="flex items-stretch gap-2">
+                                    <div className="flex items-center flex-nowrap gap-1.5 shrink-0">
+                                        <select
+                                            value={region}
+                                            onChange={(e) => setRegion(e.target.value)}
+                                            className="px-2 py-2 bg-emerald-50/50 border border-emerald-100 rounded-xl text-[10px] font-bold text-emerald-700 outline-none cursor-pointer hover:bg-emerald-100 transition-colors"
+                                            title={lang === 'vi' ? "Chọn vùng để phân bổ mùa" : "Select region for seasonal distribution"}
+                                        >
+                                            <option value="north">{t.region_north}</option>
+                                            <option value="central">{t.region_central}</option>
+                                            <option value="south">{t.region_south}</option>
+                                        </select>
                                         <button
                                             onClick={handleCopy}
                                             title="Copy dữ liệu 12 tháng (để backup hoặc paste lại sau)"
-                                            className="flex items-center gap-2 px-4 py-2 bg-slate-50/80 border border-slate-200/60 rounded-xl text-slate-600 font-black text-[10px] hover:bg-slate-600 hover:text-white hover:border-slate-600 transition-all shadow-sm group"
+                                            className="flex items-center shrink-0 gap-1.5 px-3 py-2 bg-slate-50/80 border border-slate-200/60 rounded-xl text-slate-600 font-black text-[10px] hover:bg-slate-600 hover:text-white hover:border-slate-600 transition-all shadow-sm group whitespace-nowrap"
                                         >
                                             <Copy size={16} className="group-hover:scale-110 transition-transform" /> Copy
                                         </button>
                                         <button
                                             onClick={handleAutoCompleteMissing}
                                             title={t.auto_fill_tip}
-                                            className="flex items-center gap-2 px-4 py-2 bg-blue-50/50 border border-blue-100 rounded-xl text-blue-600 font-bold text-[10px] hover:bg-blue-600 hover:text-white transition-all shadow-sm group"
+                                            className="flex items-center shrink-0 gap-1.5 px-3 py-2 bg-blue-50/50 border border-blue-100 rounded-xl text-blue-600 font-bold text-[10px] hover:bg-blue-600 hover:text-white transition-all shadow-sm group text-left leading-tight"
                                         >
-                                            <Sparkles size={14} className="group-hover:animate-spin" /> {t.auto_fill}
+                                            <Sparkles size={14} className="group-hover:animate-spin shrink-0" />
+                                            <div className="flex flex-col">
+                                                {t.auto_fill.split('\n').map((line, idx) => (
+                                                    <span key={idx} className="whitespace-nowrap">{line}</span>
+                                                ))}
+                                            </div>
                                         </button>
                                         <button
                                             onClick={() => handleFillAll(monthlyData[0])}
-                                            className="flex items-center gap-2 px-4 py-2 bg-slate-50/80 border border-slate-200/60 rounded-xl text-slate-600 font-black text-[10px] hover:bg-slate-600 hover:text-white hover:border-slate-600 transition-all shadow-sm group"
+                                            className="flex items-center shrink-0 gap-1.5 px-3 py-2 bg-slate-50/80 border border-slate-200/60 rounded-xl text-slate-600 font-black text-[10px] hover:bg-slate-600 hover:text-white hover:border-slate-600 transition-all shadow-sm group whitespace-nowrap"
                                         >
-                                            <RefreshCw size={14} className="group-hover:rotate-180 transition-transform duration-500" /> {t.fill_all}
+                                            <RefreshCw size={14} className="group-hover:animate-spin transition-transform" /> {t.fill_all}
                                         </button>
                                         <button
                                             onClick={() => handleSeasonalDist(monthlyData[0])}
-                                            className="flex items-center gap-2 px-4 py-2 bg-emerald-50/50 border border-emerald-100 rounded-xl text-emerald-600 font-black text-[10px] hover:bg-emerald-600 hover:text-white hover:border-emerald-600 transition-all shadow-sm group"
+                                            className="flex items-center shrink-0 gap-1.5 px-3 py-2 bg-emerald-50/50 border border-emerald-100 rounded-xl text-emerald-600 font-black text-[10px] hover:bg-emerald-600 hover:text-white hover:border-emerald-600 transition-all shadow-sm group text-left leading-tight"
                                         >
-                                            <Activity size={14} className="group-hover:scale-110 transition-transform" /> {t.distribute}
+                                            <div className="relative w-3.5 h-3.5 overflow-hidden shrink-0">
+                                                <div className="flex absolute top-0 left-0 animate-scrolling-ekg-hover opacity-70 group-hover:opacity-100 transition-opacity">
+                                                    <Activity size={14} className="shrink-0" />
+                                                    <Activity size={14} className="shrink-0" />
+                                                </div>
+                                            </div>
+                                            <div className="flex flex-col">
+                                                {t.distribute.split('\n').map((line, idx) => (
+                                                    <span key={idx} className="whitespace-nowrap">{line}</span>
+                                                ))}
+                                            </div>
                                         </button>
                                     </div>
                                 </div>
