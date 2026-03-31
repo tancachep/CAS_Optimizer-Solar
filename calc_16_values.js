@@ -2,8 +2,8 @@ import xlsx from 'xlsx';
 import path from 'path';
 import fs from 'fs';
 
-const filePath = 'D:/TOOL GOOGLE ANTIGRAVITY/2. Tool Tính toán công suất/1. Database/NEW TEMPLATE/HUYNHDUC2/Make_Template_HUYNHDUC2.xlsx';
-const TOTAL_PV_ANNUAL = 327610; // HUYNHDUC2 (223.2 kWp) - P75
+const filePath = 'D:/TOOL GOOGLE ANTIGRAVITY/2. Tool Tính toán công suất/1. Database/NEW TEMPLATE/HUYNHDUC1/Make_Template_HUYNHDUC1.xlsx';
+const TOTAL_PV_ANNUAL = 416451; // HUYNHDUC1 (282.72 kWp) - P75 (?)
 
 // Generic Solar Profile (normalized to sum = 1.0)
 const dailyProfile = {
