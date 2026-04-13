@@ -1,0 +1,105 @@
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; max-width: 900px; margin: 40px auto; padding: 20px; }
+        h1 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }
+        h2 { color: #2980b9; border-left: 5px solid #2980b9; padding-left: 10px; margin-top: 30px; }
+        h3 { color: #16a085; border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 20px; }
+        ul, ol { padding-left: 25px; }
+        li { margin-bottom: 10px; }
+        hr { border: 0; border-top: 1px solid #eee; margin: 25px 0; }
+        .tip { background-color: #f8f9fa; border-left: 5px solid #28a745; padding: 15px; margin: 20px 0; font-size: 0.95em; }
+        .formula { font-family: 'Courier New', Courier, monospace; background: #f4f4f4; padding: 2px 5px; border-radius: 3px; font-size: 0.9em; }
+        .param-id { font-weight: bold; color: #e67e22; }
+    </style>
+</head>
+<body>
+    <h1>⚙️ SOLAR OPTIMIZER - QUY TRÌNH & HƯỚNG DẪN KỸ THUẬT CHI TIẾT (BẢN ĐẦY ĐỦ)</h1>
+    <hr>
+    <p><i>Tài liệu dành cho Kỹ sư (Engineer) - Tập trung vào luồng xử lý dữ liệu, phân tích 16 thông số và kịch bản tài chính.</i></p>
+
+    <h2>🚀 1. Quy trình Tổng quát (Workflow)</h2>
+    <ol>
+        <li><b>Bối cảnh (Project Context)</b>: Nhập tên dự án, đơn vị tư vấn. <b>Quan trọng nhất</b>: Chọn đúng <b>Tỉnh/Thành</b> để tool load dữ liệu bức xạ (GSA) và biểu giá điện khu vực.</li>
+        <li><b>Thu thập & Nhập liệu (Data Input)</b>: Chọn phương pháp nhập dữ liệu phù hợp (Case 1: Upload Excel/CSV hoặc Case 2: Nhập hóa đơn EVN).</li>
+        <li><b>Tinh chỉnh Dữ liệu (Refinement)</b>: Chọn nguồn nắng (Realistic/Sine), sử dụng Interpolate để làm mượt dữ liệu, điều chỉnh Loss Factors (Nhiệt độ, Bụi, Dây dẫn...).</li>
+        <li><b>Cấu hình Phụ tải & Giá điện (Tariff)</b>: Chọn Nhóm khách hàng (Sản xuất/Kinh doanh) và <b>Cấp điện áp</b> (Hạ áp/Trung áp) để áp đúng đơn giá BT/CĐ/TD.</li>
+        <li><b>Cấu hình Thiết bị (Hardware)</b>: Nhập công suất Solar (kWp), cấu hình Inverter (AC Limit) và thiết lập Pin lưu trữ BESS.</li>
+        <li><b>Thiết lập Tài chính (Financials)</b>: Nhập CAPEX, cấu hình Vốn vay (Loan), Thuế TNDN, và tỷ lệ tăng giá điện hàng năm.</li>
+        <li><b>Mô phỏng & Tối ưu (Simulation)</b>: Chạy công cụ <b>"Optimal Suggest"</b> để tìm điểm hoàn vốn nhanh nhất.</li>
+        <li><b>Xuất Báo cáo (Reporting)</b>: Cấu hình các section hiển thị và xuất file PDF chuyên nghiệp.</li>
+    </ol>
+
+    <h2>📊 2. Hai Kịch bản Nhập liệu Chính</h2>
+    <h3>CASE 1: Import Load Profile (Đo đếm thực tế)</h3>
+    <ul>
+        <li>Dành cho khách hàng có dữ liệu đo đếm 30/60 phút từ Smart Meter.</li>
+        <li>Engineer thực hiện Mapping cột (Thời gian vs Giá trị) và xử lý dữ liệu bị thiếu bằng tính năng <b>Interpolate</b>.</li>
+    </ul>
+    <h3>CASE 2: EVN Bill (Ướn tính từ hóa đơn)</h3>
+    <ul>
+        <li>Dành cho khách hàng chỉ có hóa đơn hàng tháng.</li>
+        <li>Sử dụng tính năng <b>"Phân bổ"</b> (Distribution) để rải sản lượng theo template mẫu (Nhà máy 2 ca, 3 ca, Văn phòng...).</li>
+        <li>Tùy chỉnh <b>Base Load</b> để phản ánh đúng mức tiêu thụ nền ban đêm.</li>
+    </ul>
+
+    <h2>📐 3. Giải mã 16 Thông số Kỹ thuật & Công thức</h2>
+    <p><i>Tại tab Báo cáo, hệ thống phân tích sâu 16 chỉ số để đánh giá sự tương quan giữa Phụ tải và Solar:</i></p>
+    <ol>
+        <li><span class="param-id">Tổng sản lượng PV</span>: Dự báo điện năng tạo ra trong 1 năm <span class="formula">Σ (PV Monthly)</span>.</li>
+        <li><span class="param-id">Năng lượng Solar Tự dùng</span>: Lượng điện Solar được tải tiêu thụ trực tiếp <span class="formula">Σ Min(Solar, Load)</span>.</li>
+        <li><span class="param-id">Tỷ lệ Tự dùng (%)</span>: Hiệu quả sử dụng tại chỗ <span class="formula">(Solar Used / Total Yield) * 100</span>.</li>
+        <li><span class="param-id">Cắt giảm (Dư thừa)</span>: Sản lượng dư thừa không dùng hết <span class="formula">Total Yield - Solar Used</span>.</li>
+        <li><span class="param-id">Tỷ lệ Cắt giảm (%)</span>: Phản ánh sự lãng phí năng lượng nếu không có BESS.</li>
+        <li><span class="param-id">Sản lượng mua Lưới (Import)</span>: Lượng điện khách hàng vẫn phải mua từ EVN.</li>
+        <li><span class="param-id">Tổng tải (Total Load)</span>: Tổng nhu cầu điện năng trong 1 năm của khách hàng.</li>
+        <li><span class="param-id">Tổn thất hệ thống (%)</span>: <span class="formula">(1 - Total Derate Factor) * 100</span>.</li>
+        <li><span class="param-id">Tự dùng giờ Bình thường (BT)</span>: Khối lượng điện Solar dùng trong khung giờ giá trung bình.</li>
+        <li><span class="param-id">Tỷ lệ Tự dùng BT (%)</span>: Phân bổ tỷ trọng tự dùng vào khung giờ BT.</li>
+        <li><span class="param-id">Tự dùng giờ Cao điểm (CĐ)</span>: **Chỉ số quan trọng nhất** vì mang lại giá trị tiết kiệm cao nhất.</li>
+        <li><span class="param-id">Tỷ lệ Tự dùng CĐ (%)</span>: Tỷ trọng tiết kiệm vào giờ giá cao.</li>
+        <li><span class="param-id">Cắt giảm giờ Bình thường</span>: Lượng dư thừa trong khung giờ BT.</li>
+        <li><span class="param-id">Tỷ lệ Cắt giảm BT (%)</span>: Phân bổ dư thừa theo khung giờ.</li>
+        <li><span class="param-id">Cắt giảm giờ Cao điểm</span>: Lượng dư thừa trong khung giờ CĐ.</li>
+        <li><span class="param-id">Tỷ lệ Cắt giảm CĐ (%)</span>: (Cắt giảm CĐ / Tổng cắt giảm) * 100.</li>
+    </ol>
+
+    <h2>💰 4. Phân tích Dòng tiền (Cash Flow) & ROI</h2>
+    <h3>4.1 Logic Dòng tiền hàng năm</h3>
+    <ul>
+        <li><b>Năm 0 (CAPEX)</b>: Khoản chi đầu tư ban đầu (Vốn tự có + Vốn vay).</li>
+        <li><b>Doanh thu (Tiết kiệm)</b>: Tính bằng <span class="formula">Sản lượng tự dùng x Giá điện EVN</span> theo từng khung giờ.</li>
+        <li><b>Chi phí O&M</b>: Phí vận hành bảo trì (O&M) và Bảo hiểm hệ thống.</li>
+        <li><b>Thay thế (Replacement)</b>: Chi phí thay thế Inverter hoặc BESS định kỳ (Năm 10, 15...).</li>
+        <li><b>Dòng tiền ròng (Net Cash Flow)</b>: Khoản tiền thu về thực tế sau khi trừ mọi chi phí và trả nợ.</li>
+    </ul>
+    <h3>4.2 Các Chỉ số Hiệu quả</h3>
+    <ul>
+        <li><b>NPV</b>: Giá trị hiện tại ròng. Dự án khả thi khi NPV dương.</li>
+        <li><b>IRR</b>: Tỷ suất hoàn vốn nội bộ - đánh giá sức hấp dẫn đầu tư.</li>
+        <li><b>Payback (Hoàn vốn)</b>: Thời điểm dòng tiền tích lũy vượt ngưỡng 0.</li>
+        <li><b>LCOE</b>: Giá thành sản xuất 1 kWh điện Solar bình quân trong 20-25 năm.</li>
+    </ul>
+
+    <h2>⚙️ 5. Các Thông số Nâng cao (BESS, Losses, Env)</h2>
+    <h3>5.1 Hiệu quả Môi trường</h3>
+    <ul>
+        <li><b>Giảm phát thải CO2</b>: 0.816 kg/kWh.</li>
+        <li><b>Cây xanh tương đương</b>: 16.7 kg CO2 / cây / năm.</li>
+        <li><b>Tiết kiệm Than/Dầu</b>: Quy đổi năng lượng Solar sang nhiên liệu hóa thạch tương đương.</li>
+    </ul>
+    <h3>5.2 Cấu hình Kỹ thuật Nâng cao</h3>
+    <ul>
+        <li><b>Calibration Factor</b>: Hệ số hiệu chuẩn sản lượng thực tế (mặc định 100%).</li>
+        <li><b>Inverter AC Limit</b>: Giới hạn AC để mô phỏng hiện tượng Clipping.</li>
+        <li><b>BESS Strategy</b>: Chọn <b>Peak Shaving</b> để cắt giảm chi phí công suất đỉnh (Demand Charge).</li>
+        <li><b>Weather Derate</b>: Mô phỏng sản lượng trong điều kiện thời tiết xấu.</li>
+    </ul>
+
+    <hr>
+    <div class="tip">
+        <b>💡 Ghi chú cho Engineer:</b> Mọi thông số (Losses, Financials, BESS) đều có thể tinh chỉnh tại Sidebar để tạo ra kịch bản sát nhất với thực tế của từng khách hàng.
+    </div>
+</body>
+</html>

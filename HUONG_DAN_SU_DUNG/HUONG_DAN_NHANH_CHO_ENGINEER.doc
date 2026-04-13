@@ -1,0 +1,126 @@
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 40px auto; padding: 20px; }
+        h1 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }
+        h2 { color: #2980b9; border-left: 5px solid #2980b9; padding-left: 10px; margin-top: 30px; }
+        h3 { color: #16a085; }
+        ul { padding-left: 20px; }
+        li { margin-bottom: 8px; }
+        hr { border: 0; border-top: 1px solid #eee; margin: 20px 0; }
+        .tip { background-color: #f8f9fa; border-left: 5px solid #28a745; padding: 15px; margin: 20px 0; }
+        .workflow-step { font-weight: bold; color: #d35400; }
+    </style>
+</head>
+<body>
+    <h1>⚙️ SOLAR OPTIMIZER - QUY TRÌNH & HƯỚNG DẪN KỸ THUẬT CHI TIẾT</h1>
+    <hr>
+    <p><i>Tài liệu dành cho Kỹ sư (Engineer) - Tập trung vào luồng xử lý dữ liệu và kịch bản thực tế.</i></p>
+
+    <h2>🚀 1. Quy trình Tổng quát (Workflow)</h2>
+    <ol>
+        <li><span class="workflow-step">Bối cảnh (Project Context)</span>: Nhập tên dự án, đơn vị tư vấn. <b>Quan trọng nhất</b>: Chọn đúng <b>Tỉnh/Thành</b> để tool load dữ liệu bức xạ (GSA) và biểu giá điện khu vực.</li>
+        <li><span class="workflow-step">Thu thập & Nhập liệu (Data Input)</span>: Chọn phương pháp nhập dữ liệu phù hợp với thông tin khách hàng cung cấp (Case 1 hoặc Case 2).</li>
+        <li><span class="workflow-step">Tinh chỉnh Dữ liệu (Refinement)</span>:
+            <ul>
+                <li>Chọn nguồn nắng (<b>Realistic</b> hoặc <b>Sine Wave</b>).</li>
+                <li>Sử dụng <b>Interpolate</b> nếu dữ liệu Load Profile bị thiếu.</li>
+                <li>Điều chỉnh <b>Total Derate Factor</b> (Tổn thất hệ thống) và <b>Calibration</b>.</li>
+            </ul>
+        </li>
+        <li><span class="workflow-step">Cấu hình Phục tải & Giá điện (Tariff)</span>:
+            <ul>
+                <li>Chọn <b>Nhóm khách hàng</b> (Sản xuất, Kinh doanh, v.v.).</li>
+                <li>Chọn <b>Cấp điện áp</b> (Dưới 6kV, 22kV-110kV, v.v.) để hệ thống áp đúng đơn giá BT/CĐ/TD.</li>
+            </ul>
+        </li>
+        <li><span class="workflow-step">Cấu hình Thiết bị (Hardware)</span>:
+            <ul>
+                <li>Nhập công suất Solar (kWp).</li>
+                <li>Chọn Inverter và kiểm tra tỷ lệ <b>DC/AC Ratio</b> (Thanh màu xanh ở Dashboard).</li>
+                <li>Thiết lập BESS (Dung lượng, Công suất, Chiến lược sạc/xả).</li>
+            </ul>
+        </li>
+        <li><span class="workflow-step">Thiết lập Tài chính (Financials)</span>: Nhập CAPEX, cấu hình Vốn vay (Loan), tỷ lệ Lãi suất, Thuế TNDN, và tỷ lệ tăng giá điện hàng năm.</li>
+        <li><span class="workflow-step">Mô phỏng & Tối ưu (Simulation)</span>: Chạy công cụ <b>"Optimal Suggest"</b> để tìm điểm hoàn vốn nhanh nhất.</li>
+        <li><span class="workflow-step">Xuất Báo cáo (Reporting)</span>: Cấu hình các section cần thiết và xuất file PDF.</li>
+    </ol>
+
+    <hr>
+
+    <h2>📊 2. CASE 1: Phân tích từ Load Profile thực tế (Import Excel/CSV)</h2>
+    <p><i>Dành cho khách hàng có dữ liệu đo đếm chi tiết (Smart Meter, đồng hồ lưu trữ).</i></p>
+
+    <h3>Bước 1: Chuẩn bị file</h3>
+    <ul>
+        <li>File định dạng <code>.xlsx</code>, <code>.csv</code> hoặc <code>.txt</code>.</li>
+        <li>Cấu trúc: Cột 1 là Thời gian, Cột 2 là Giá trị điện năng (kWh hoặc kW).</li>
+    </ul>
+
+    <h3>Bước 2: Upload & Mapping</h3>
+    <ul>
+        <li>Click <b>"Select Load Profile"</b> để tải file lên.</li>
+        <li>Tool sẽ tự động nhận diện cột. Nếu lệch, Engineer cần chọn lại tiêu đề cột (Timestamp vs Value).</li>
+    </ul>
+
+    <h3>Bước 3: Xử lý dữ liệu (Data Cleaning)</h3>
+    <ul>
+        <li><b>Interpolate 30min</b>: Nếu file khách hàng cung cấp chỉ có 12 giờ/ngày hoặc dữ liệu từng 1 tiếng, dùng tính năng này để làm mượt biểu đồ thành 30 phút/điểm.</li>
+        <li>Kiểm tra tính hợp lệ: Xem biểu đồ Dashboard xem có bị nhảy spike (giá trị ảo) không.</li>
+    </ul>
+
+    <hr>
+
+    <h2>📝 3. CASE 2: Ước tính từ Hóa đơn Điện lực (EVN Bill)</h2>
+    <p><i>Dành cho khách hàng chỉ có hóa đơn tiền điện hàng tháng (Hóa đơn giấy).</i></p>
+
+    <h3>Bước 1: Nhập dữ liệu 12 tháng</h3>
+    <ul>
+        <li>Tại tab Design, chọn <b>"Bill EVN"</b>.</li>
+        <li>Nhập chỉ số kWh tiêu thụ của 12 tháng (BT - Bình thường, CĐ - Cao điểm, TD - Thấp điểm).</li>
+    </ul>
+
+    <h3>Bước 2: Phân bổ (Distribution)</h3>
+    <ul>
+        <li>Click nút <b>"Phân bổ"</b> (màu xanh).</li>
+        <li><b>Logic</b>: Tool sẽ dựa vào mẫu Profile (ví dụ: Nhà máy 2 ca) để rải đều tổng kWh của tháng đó vào 24 giờ.</li>
+        <li><b>Tùy chỉnh</b>: Engineer có thể điều chỉnh <b>Base Load</b> (Tải nền ban đêm) để khớp với thực tế vận hành của nhà máy.</li>
+    </ul>
+
+    <hr>
+
+    <h2>⚙️ 4. Các Thông số Kỹ thuật & Tài chính Nâng cao</h2>
+
+    <h3>4.1 Biểu giá điện & Cấp điện áp</h3>
+    <ul>
+        <li><b>Nhóm khách hàng</b>: Tool hỗ trợ đầy đủ các nhóm theo QĐ 1279 của EVN (Sản xuất, Kinh doanh, Hành chính, Sinh hoạt, Bán buôn).</li>
+        <li><b>Cấp điện áp</b>: Đây là thông số quan trọng ảnh hưởng trực tiếp đến giá mua điện. Engineer cần chọn đúng cấp điện áp của trạm biến áp khách hàng (ví dụ: cấp Trung áp 22kV thường có giá rẻ hơn Hạ áp).</li>
+        <li><b>Biểu giá 2 thành phần</b>: Nếu dự án áp dụng thử nghiệm giá công suất (kW), hãy chọn cấp điện áp tương ứng trong phần cấu hình nâng cao.</li>
+    </ul>
+
+    <h3>4.2 BESS Strategy (Pin lưu trữ)</h3>
+    <ul>
+        <li><b>Standard</b>: Ưu tiên tự dùng (Self-consumption). Thừa nắng sạc, thiếu nắng xả.</li>
+        <li><b>Peak Shaving (Tiết kiệm đỉnh)</b>: Engineer thiết lập ngưỡng threshold. Khi tải vượt ngưỡng vào giờ Cao điểm, BESS sẽ xả để cắt đỉnh, giúp giảm chi phí <b>Demand Charge</b> (Biểu giá 2 thành phần).</li>
+    </ul>
+
+    <h3>4.3 Financial Parameters</h3>
+    <ul>
+        <li><b>Loan Ratio</b>: Thường cấu hình 70% vốn vay, 30% vốn đối ứng.</li>
+        <li><b>Escalation</b>: Thường để 2% (Tỷ lệ tăng giá điện trung bình của EVN).</li>
+        <li><b>Carbon Credit</b>: Engineer có thể nhập giá tín chỉ Carbon (VND/tấn CO2) để tính thêm thu nhập cho dự án.</li>
+    </ul>
+
+    <h3>4.4 Report Configuration</h3>
+    <ul>
+        <li>Trước khi xuất PDF, tại sidebar, bạn có thể chọn ẩn/hiện các phần như: "Correlation Charts", "Detailed Specs", "Cash Flow Table".</li>
+        <li><b>Ghi chú</b>: Sử dụng nút <b>"Xem Công Thức"</b> để giải thích cho khách hàng về các chỉ số ROI, NPV một cách minh bạch.</li>
+    </ul>
+
+    <hr>
+    <div class="tip">
+        <b>💡 Ghi chú kỹ thuật:</b> Công cụ sử dụng Engine tính toán 8760 bước (mỗi bước 1 giờ). Mọi thay đổi thông số đều được recalculate ngay lập tức trên UI.
+    </div>
+</body>
+</html>

@@ -1,0 +1,101 @@
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; max-width: 900px; margin: 40px auto; padding: 20px; }
+        h1 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }
+        h2 { color: #2980b9; border-left: 5px solid #2980b9; padding-left: 10px; margin-top: 30px; }
+        h3 { color: #16a085; border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 20px; }
+        table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 0.9em; }
+        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+        th { background-color: #f2f2f2; color: #2c3e50; font-weight: bold; }
+        .highlight { background-color: #ebf5fb; font-weight: bold; }
+        .tip { background-color: #fdf2f2; border-left: 5px solid #e74c3c; padding: 15px; margin: 20px 0; }
+        .connection-note { color: #27ae60; font-weight: bold; font-style: italic; }
+        .data-flow { background: #f4f4f4; padding: 15px; border-radius: 8px; border: 1px dashed #ccc; margin: 15px 0; }
+    </style>
+</head>
+<body>
+    <h1>⚙️ SOLAR OPTIMIZER - HƯỚNG DẪN CHUYÊN SÂU & LIÊN KẾT HỆ THỐNG</h1>
+    <hr>
+    <p><i>Tài liệu dành cho Kỹ sư (Engineer) - Giải thích chi tiết từng chức năng và luồng dữ liệu liên kết giữa các công cụ.</i></p>
+
+    <h2>🔗 1. Bản đồ Dòng Dữ liệu (Data Interface Map)</h2>
+    <div class="data-flow">
+        <b>Dòng chảy dữ liệu:</b> <br>
+        Tỉnh/Thành ➔ [Bức xạ GSA] ➔ [Sản lượng Solar] <br>
+        Load Profile ➔ [Nhu cầu 24h] ➔ [So khớp Solar/Load] <br>
+        [So khớp] ➔ [BESS Logic] ➔ [Used/Excess Stats] <br>
+        [Stats] ➔ [Voltage Level/Tariff] ➔ [Tiết kiệm/Cash Flow]
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Tính năng</th>
+                <th>Mô tả chi tiết chức năng</th>
+                <th>Sự liên kết với các công cụ khác</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td class="highlight">Interpolate (Nội suy)</td>
+                <td>Nội suy dữ liệu từ bước 1h sang 30p hoặc 15p.</td>
+                <td>Giúp <b>BESS Engine</b> tính toán sạc/xả mượt mà, tránh sai số do bước thời gian quá lớn.</td>
+            </tr>
+            <tr>
+                <td class="highlight">Phân bổ (Distribution)</td>
+                <td>Rải sản lượng tháng vào 24h dựa trên template mẫu.</td>
+                <td>Tạo ra <b>Load Profile giả lập</b> để <b>Solar Simulator</b> có dữ liệu so sánh Tự dùng.</td>
+            </tr>
+            <tr>
+                <td class="highlight">Cấp điện áp (Voltage)</td>
+                <td>Chọn đơn giá điện theo khung giờ của EVN.</td>
+                <td>Nguồn dữ liệu đầu vào cho <b>Financial Engine</b> để tính toán số tiền tiết kiệm hàng năm.</td>
+            </tr>
+            <tr>
+                <td class="highlight">Optimal Suggest</td>
+                <td>Tự động quét hàng loạt kịch bản công suất Solar.</td>
+                <td>Tổng hợp dữ liệu từ <b>Tech Stats</b> và <b>Cash Flow</b> để tìm điểm lọt lưới IRR cao nhất.</td>
+            </tr>
+            <tr>
+                <td class="highlight">Peak Shaving</td>
+                <td>Chiến lược xả pin chỉ vào khung giờ giá điện đắt nhất.</td>
+                <td>Liên kết trực tiếp với <b>Hóa đơn tiền điện (Bill Savings)</b> để tối đa hóa ROI.</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h2>🛠️ 2. Phân tích chi tiết từng Module</h2>
+
+    <h3>2.1 Module Nhập liệu (Input Suite)</h3>
+    <ul>
+        <li><b>Select Load Profile</b>: Hỗ trợ đa định dạng (Excel, CSV, PVSyst). <br><span class="connection-note">➔ Kết nối:</span> Cung cấp dữ liệu "Tải" cho toàn bộ hệ thống.</li>
+        <li><b>Base Load Tuning</b>: Cho phép Engineer chỉnh sửa mức tiêu thụ tối thiểu. <br><span class="connection-note">➔ Kết nối:</span> Ảnh hưởng đến lượng Solar dư thừa có thể sạc vào pin.</li>
+    </ul>
+
+    <h3>2.2 Module Mô phỏng Kỹ thuật (Technical simulation)</h3>
+    <ul>
+        <li><b>Losses Components</b>: Chi tiết suy hao do Nhiệt độ, Dây dẫn, Bụi bẩn. <br><span class="connection-note">➔ Kết nối:</span> Giảm công suất định danh xuống công suất thực tế trước khi so khớp với Tải.</li>
+        <li><b>Inverter AC Limit</b>: Giới hạn dòng xoay chiều. <br><span class="connection-note">➔ Kết nối:</span> Quyết định lượng năng lượng bị "Clipping" (Cắt bỏ) nếu dàn pin quá lớn so với Biến tần.</li>
+    </ul>
+
+    <h3>2.3 Module Phân tích Tài chính (Financial Analyst)</h3>
+    <ul>
+        <li><b>Escalation</b>: Tỷ lệ trượt giá điện. <br><span class="connection-note">➔ Kết nối:</span> Quyết định giá trị doanh thu ở các năm tương lai (Year 10-20).</li>
+        <li><b>Loan Amortization</b>: Trả nợ theo dư nợ giảm dần. <br><span class="connection-note">➔ Kết nối:</span> Kết hợp với Thuế TNDN để ra Dòng tiền ròng (Net Flow).</li>
+    </ul>
+
+    <h2>📈 3. Cách các công cụ bổ trợ cho nhau</h2>
+    <p>Hệ thống hoạt động theo nguyên lý <b>Phản hồi tức thì (Real-time feedback)</b>:</p>
+    <ul>
+        <li>Khi Engineer tăng <b>BESS Capacity</b> ➔ Tool chạy lại <b>BESS Logic</b> ➔ Cập nhật <b>16 thông số kỹ thuật</b> ➔ Đẩy dữ liệu sang <b>Cash Flow</b> ➔ Cập nhật biểu đồ <b>Cumulative</b>.</li>
+        <li>Toàn bộ chu trình này diễn ra tự động mỗi khi có bất kỳ thay đổi nào ở Sidebar.</li>
+    </ul>
+
+    <hr>
+    <div class="tip">
+        <b>💡 Mẹo cho Kỹ sư:</b> Hãy luôn bắt đầu bằng việc chọn <b>Tỉnh/Thành</b> và <b>Cấp điện áp</b> trước khi tinh chỉnh các thông số kỹ thuật khác để có cái nhìn chính xác nhất về tiềm năng kinh tế của dự án.
+    </div>
+</body>
+</html>
