@@ -486,8 +486,6 @@ const TRANSLATIONS = {
             legend_bess_discharge: "BESS Discharge",
             legend_load_avg: "Average Load",
             legend_load_we: "Weekend Load",
-            no_bess: "Not used",
-            not_selected: "Not selected",
             chart_load_solar: "Load vs Solar",
             chart_grid_import_bess: "Grid Import vs Solar (with BESS)",
             axis_solar_kw: "Solar Generation (kW)",
