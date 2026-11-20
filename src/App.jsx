@@ -2,12 +2,15 @@ import React, { useState, useEffect } from 'react';
 import SolarOptimizer from './SolarOptimizer';
 import ErrorBoundary from './ErrorBoundary';
 import LoginPage from './presentation/features/auth/LoginPage';
-import { supabase } from './infra/supabaseClient';
+import { supabase, isSupabaseConfigured } from './infra/supabaseClient';
+
+// Offline mode (no Supabase configured): skip login with a local guest user
+const OFFLINE_USER = { email: 'offline@local', user_metadata: { offline: true } };
 import { Loader2 } from 'lucide-react';
 
 function App() {
-  const [session, setSession] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [session, setSession] = useState(isSupabaseConfigured ? null : { user: OFFLINE_USER });
+  const [loading, setLoading] = useState(isSupabaseConfigured);
 
   // Detect user role from email
   const getUserRole = (user) => {
@@ -16,6 +19,8 @@ function App() {
   };
 
   useEffect(() => {
+    if (!isSupabaseConfigured) return; // offline: session already initialised
+
     // Check initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -48,6 +53,7 @@ function App() {
     <div className="w-full min-h-screen bg-slate-50">
       <ErrorBoundary>
         <SolarOptimizer user={session.user} userRole={userRole} onSignOut={async () => {
+          if (!isSupabaseConfigured) return; // nothing to sign out of in offline mode
           await supabase.auth.signOut();
           setSession(null);
         }} />

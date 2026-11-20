@@ -28,6 +28,8 @@ export const execute = (
     let totalCharged = 0;
     let totalDischarged = 0;
     let totalGridCharge = 0;
+    let totalDischargedFromGrid = 0; // part of totalDischarged whose energy came from the grid
+    let gridSoc = 0; // kWh of the current SOC that was charged from the grid
 
     let usedPeak = 0; let usedNormal = 0; let usedOffPeak = 0;
     let exportedPeak = 0; let exportedNormal = 0; let exportedOffPeak = 0;
@@ -37,7 +39,10 @@ export const execute = (
     // --- PARSE PARAMS (Robust sanitization) ---
     const calibrationFactor = isNaN(Number(params.calibrationFactor)) ? 100 : Number(params.calibrationFactor);
     const scaling = calibrationFactor / 100.0;
-    const inverterMaxAcKw = isNaN(Number(techParams.inverterMaxAcKw)) ? 999999 : Number(techParams.inverterMaxAcKw);
+    // A missing / zero / invalid AC limit means "no inverter selected yet" → do not clip
+    // (clipping to 0 kW would wipe out all generation).
+    const rawInverterMaxAcKw = Number(techParams.inverterMaxAcKw);
+    const inverterMaxAcKw = (Number.isFinite(rawInverterMaxAcKw) && rawInverterMaxAcKw > 0) ? rawInverterMaxAcKw : Infinity;
     const gridInjectionPrice = isNaN(Number(techParams.gridInjectionPrice)) ? 0 : Number(techParams.gridInjectionPrice);
     const allowGridExport = gridInjectionPrice > 0;
 
@@ -153,13 +158,18 @@ export const execute = (
                 const actualStored = Math.min(roomInBattery, maxInput * CHARGE_EFF);
 
                 currentSoc += actualStored;
+                gridSoc += actualStored;
                 totalGridCharge += (actualStored / CHARGE_EFF);
                 hourlyChargeFromGrid = actualStored;
             }
 
             // DISCHARGE
-            const shouldDischarge = (useTouMode && touType === 'PEAK' && deficitEnergy > 0) ||
-                (!useTouMode && deficitEnergy > 0);
+            // Never discharge in an off-peak step while grid charging is enabled:
+            // that would just cycle cheap grid energy through the battery at a loss.
+            const gridChargingNow = enableGridCharge && touType === 'OFF_PEAK';
+            const shouldDischarge = !gridChargingNow && (
+                (useTouMode && touType === 'PEAK' && deficitEnergy > 0) ||
+                (!useTouMode && deficitEnergy > 0));
 
             if (shouldDischarge && currentSoc > minSocKwh) {
                 const energyNeeded = deficitEnergy;
@@ -168,6 +178,11 @@ export const execute = (
 
                 // Calculate discharged amount from battery state
                 const deductedFromBatt = outputToLoad / DISCHARGE_EFF;
+
+                // Attribute the discharge proportionally to grid- vs solar-origin energy in the battery
+                const gridShare = currentSoc > 0 ? Math.min(1, gridSoc / currentSoc) : 0;
+                gridSoc = Math.max(0, gridSoc - deductedFromBatt * gridShare);
+                totalDischargedFromGrid += outputToLoad * gridShare;
 
                 currentSoc -= deductedFromBatt;
                 totalDischarged += outputToLoad;
@@ -253,12 +268,14 @@ export const execute = (
         totalCharged,
         totalDischarged,
         totalGridCharge,
+        totalDischargedFromGrid,
         gridImport,
         usedPeak, usedNormal, usedOffPeak,
         exportedPeak, exportedNormal, exportedOffPeak,
         curtailedPeak, curtailedNormal, curtailedOffPeak,
         curtailmentRate: totalSolarGen > 0 ? totalCurtailed / totalSolarGen : 0,
-        selfConsumptionRate: totalSolarGen > 0 ? totalUsed / totalSolarGen : 0,
+        // Only solar-origin energy counts as self-consumption (grid-charged battery output excluded)
+        selfConsumptionRate: totalSolarGen > 0 ? Math.max(0, totalUsed - totalDischargedFromGrid) / totalSolarGen : 0,
         hourlyBatteryData
     };
 };

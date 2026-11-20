@@ -899,7 +899,7 @@ const SolarOptimizer = ({ user, userRole = 'engineer', onSignOut }) => {
         }
 
         // Fetch the statically hosted JSON array with a cache-buster to ensure jagged data is loaded
-        fetch(`/data/gsa/${selectedProvince.id}.json?v=${Date.now()}`)
+        fetch(`${import.meta.env.BASE_URL}data/gsa/${selectedProvince.id}.json?v=${Date.now()}`)
             .then(res => {
                 if (!res.ok) throw new Error('Network response was not ok');
                 return res.json();
@@ -1351,7 +1351,7 @@ const SolarOptimizer = ({ user, userRole = 'engineer', onSignOut }) => {
                     bessStrategy === 'peak-shaving', // Derived from strategy
                     isGridCharge,
                     { ...deferredParams, calibrationFactor },
-                    { ...deferredTechParams, inverterMaxAcKw: totalACPower, isActualYield } // Removed hardcoded weatherDerate override
+                    { ...deferredTechParams, inverterMaxAcKw: totalACPower > 0 ? totalACPower : deferredSystemSize / 1.1, isActualYield } // No inverter selected yet → assume DC/AC 1.1 instead of clipping to 0 kW
                 );
                 setCustomStats(results);
 
@@ -2933,7 +2933,7 @@ const SolarOptimizer = ({ user, userRole = 'engineer', onSignOut }) => {
                                                 <td className="p-2 text-right text-slate-600 border-r border-slate-100">{formatMoney(s.annualSaving)}</td>
                                                 <td className="p-2 text-right font-bold text-purple-600 border-r border-slate-100">{formatMoney(s.lcoe)}</td>
                                                 <td className="p-2 text-right font-bold text-emerald-600 border-r border-slate-100">{formatMoney(s.npv)}</td>
-                                                <td className="p-2 text-right font-bold text-blue-600 border-r border-slate-100">{s.irr.toFixed(1)}<small className="font-normal">%</small></td>
+                                                <td className="p-2 text-right font-bold text-blue-600 border-r border-slate-100">{Number.isFinite(s.irr) ? s.irr.toFixed(1) : '—'}<small className="font-normal">%</small></td>
                                                 <td className="p-2 text-right font-bold text-slate-800">{s.paybackYears.toFixed(1)} <small className="font-normal text-slate-500">{lang === 'en' ? 'Years' : 'Năm'}</small></td>
                                             </tr>
                                         ))}
@@ -3094,7 +3094,7 @@ const SolarOptimizer = ({ user, userRole = 'engineer', onSignOut }) => {
                                 </div>
                                 <div className="p-1.5 bg-blue-50 rounded-lg border border-blue-100 text-center">
                                     <p className="text-[10px] font-black text-blue-600 uppercase">IRR</p>
-                                    <p className="text-sm font-black text-blue-700">{currentFinance.irr.toFixed(1)}%</p>
+                                    <p className="text-sm font-black text-blue-700">{Number.isFinite(currentFinance.irr) ? currentFinance.irr.toFixed(1) : '—'}%</p>
                                 </div>
                                 <div className="p-1.5 bg-indigo-50 rounded-lg border border-indigo-100 text-center">
                                     <p className="text-[10px] font-black text-indigo-600 uppercase">{t.pdf.payback}</p>
