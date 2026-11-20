@@ -10,6 +10,18 @@
  */
 
 /**
+ * Net load POWER (kW) of a data point after direct solar.
+ * hourlyBatteryData stores `load` / `solar` as ENERGY per step (kWh = kW × timeStep),
+ * so divide by the step length to get power (matters for 30-minute data).
+ */
+const netLoadKw = (point) => {
+    const timeStep = Number(point.timeStep) > 0 ? Number(point.timeStep) : 1;
+    const loadKwh = Number(point.load) || 0;
+    const solarKwh = Number(point.solarUsed || point.solar || 0);
+    return Math.max(0, loadKwh - solarKwh) / timeStep;
+};
+
+/**
  * Calculate monthly Pmax values from hourly load data.
  * Pmax = max 30-minute average power in each month.
  * Since data is typically hourly, we use hourly values directly.
@@ -27,9 +39,7 @@ const calculateMonthlyPmax = (hourlyData) => {
         if (isNaN(dateObj.getTime())) return;
 
         const monthKey = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}`;
-        const load = Number(point.load) || 0;
-        const solarGen = Number(point.solarUsed || point.solar || 0);
-        const netLoad = Math.max(0, load - solarGen);
+        const netLoad = netLoadKw(point);
 
         const current = monthlyPeaks.get(monthKey) || 0;
         if (netLoad > current) {
@@ -67,7 +77,6 @@ const simulatePeakShaving = (hourlyData, bessKwh, bessMaxPowerKw, bessEffRoundTr
 
     const SINGLE_WAY_EFF = Math.sqrt(bessEffRoundTrip);
     const minSocKwh = bessKwh * (1 - bessDod);
-    const maxTransferKwh = bessMaxPowerKw; // Per hour (1h timestep)
 
     // Group data by month
     const monthlyData = new Map();
@@ -83,12 +92,8 @@ const simulatePeakShaving = (hourlyData, bessKwh, bessMaxPowerKw, bessEffRoundTr
 
     monthlyData.forEach((points, monthKey) => {
         // Get original Pmax (net load = load - solar used by load directly)
-        const loads = points.map(p => {
-            const load = Number(p.load) || 0;
-            const solarGen = Number(p.solarUsed || p.solar || 0);
-            return Math.max(0, load - solarGen);
-        });
-        const pmaxBefore = Math.max(...loads);
+        const loads = points.map(netLoadKw);
+        const pmaxBefore = loads.reduce((m, v) => (v > m ? v : m), 0);
 
         // Binary search for the optimal target load level
         // Try to find the lowest Pmax achievable with this BESS
@@ -102,16 +107,13 @@ const simulatePeakShaving = (hourlyData, bessKwh, bessMaxPowerKw, bessEffRoundTr
 
             // Simulate: can BESS keep load below targetPmax for entire month?
             let soc = bessKwh * 0.5; // Start at 50%
-            let feasible = true;
             let actualPmax = 0;
 
             for (const p of points) {
                 const timeStep = p.timeStep || 1; // Extract time interval dynamically (1h or 0.5h)
                 const maxTransferKwhStep = bessMaxPowerKw * timeStep;
 
-                const load = Number(p.load) || 0;
-                const solarGen = Number(p.solarUsed || p.solar || 0);
-                const netLoad = Math.max(0, load - solarGen); // Power (kW)
+                const netLoad = netLoadKw(p); // Power (kW)
 
                 if (netLoad > targetPmax) {
                     // Need to discharge to bring load down
