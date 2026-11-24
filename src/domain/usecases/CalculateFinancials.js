@@ -10,6 +10,14 @@ const calculatePMT = (rate, nper, pv) => {
     return (pv * r * Math.pow(1 + r, nper)) / (Math.pow(1 + r, nper) - 1);
 };
 
+// Helper: parse a numeric param, falling back to a default when missing/invalid.
+// (Number(undefined) is NaN, so `Number(x) ?? def` never applies the default.)
+const num = (value, def) => {
+    if (value === undefined || value === null || value === '') return def;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : def;
+};
+
 export const execute = (
     capex,
     customStats, // Result from CalculateEnergyGeneration
@@ -21,17 +29,17 @@ export const execute = (
     const safeCapex = Number(capex) || 0;
     const safeParams = params || {};
     const years = Number(safeParams.years) || 20;
-    const degradation = Number(safeParams.degradation) ?? 0.55;
-    const escalation = Number(safeParams.escalation) ?? 2.0;
-    const discountRate = Number(safeParams.discountRate) ?? 10.0;
-    const omPercent = Number(safeParams.omPercent) ?? 1.0;
-    const insuranceRate = Number(safeParams.insuranceRate) ?? 0.5;
+    const degradation = num(safeParams.degradation, 0.55);
+    const escalation = num(safeParams.escalation, 2.0);
+    const discountRate = num(safeParams.discountRate, 10.0);
+    const omPercent = num(safeParams.omPercent, 1.0);
+    const insuranceRate = num(safeParams.insuranceRate, 0.5);
     const batteryLife = Number(safeParams.batteryLife) || 10;
-    const batteryReplaceCostPct = Number(safeParams.batteryReplaceCostPct) ?? 60;
+    const batteryReplaceCostPct = num(safeParams.batteryReplaceCostPct, 60);
     const batteryReplaceCost = safeParams.batteryReplaceCost !== undefined ? Number(safeParams.batteryReplaceCost) : undefined;
     const batteryCapex = Number(safeParams.batteryCapex) || 0;
     const inverterLife = Number(safeParams.inverterLife) || 20;
-    const inverterReplaceCostPct = Number(safeParams.inverterReplaceCostPct) ?? 10;
+    const inverterReplaceCostPct = num(safeParams.inverterReplaceCostPct, 10);
     const inverterReplaceCost = safeParams.inverterReplaceCost !== undefined ? Number(safeParams.inverterReplaceCost) : undefined;
     const omSchedule = safeParams.omSchedule || [];
     const loan = safeParams.loan || { enable: false, ratio: 70, rate: 8.0, term: 10 };
@@ -75,6 +83,9 @@ export const execute = (
     const totalGridCharge = customStats.totalGridCharge || 0;
     const totalDischarged = customStats.totalDischarged || 0;
     const totalUsed = customStats.totalUsed || 0;
+    // Energy discharged from the battery that originally came from the grid is not solar energy
+    const gridOriginDischarge = customStats.totalDischargedFromGrid || 0;
+    const solarDeliveredKwh = Math.max(0, totalUsed - gridOriginDischarge) + totalExported;
 
     const pricePeak = (prices && prices.peak) ? Number(prices.peak) : 0;
     const priceNormal = (prices && prices.normal) ? Number(prices.normal) : 0;
@@ -115,7 +126,7 @@ export const execute = (
         const gridChargeNotDegraded = costGridCharge * escFactor; // Grid charge cost only escalates, no degradation
         // Demand charge saving: escalates with electricity price, but NOT affected by panel degradation
         const demandSavingEscalated = (Number(demandChargeSaving) || 0) * escFactor;
-        const carbonRevenue = ((totalUsed + totalExported) * degFactor * (params.co2Factor || 0.816) * (carbonPrice / 1000) * usdExchangeRate) * escFactor;
+        const carbonRevenue = ((solarDeliveredKwh) * degFactor * (safeParams.co2Factor || 0.816) * (carbonPrice / 1000) * usdExchangeRate) * escFactor;
         const annualRevenue = solarRevenueDegraded - gridChargeNotDegraded + demandSavingEscalated + carbonRevenue;
         const omCost = safeCapex * ((omPercent || 0) / 100) * escFactor;
         const insCost = safeCapex * ((insuranceRate || 0) / 100);
@@ -215,18 +226,27 @@ export const execute = (
         npv += (cashFlows[i] || 0) / Math.pow(1 + safeDiscountRate / 100, i);
     }
 
-    // IRR Approximation
-    let irr = 0;
-    let low = -0.99, high = 10.0;
-    for (let k = 0; k < 100; k++) {
-        const mid = (low + high) / 2;
+    // IRR (bisection). Only valid when NPV changes sign inside the search bracket;
+    // otherwise (e.g. 100% loan → no upfront outflow) IRR is undefined → NaN.
+    const npvAt = (rate) => {
         let val = 0;
         for (let i = 0; i <= years; i++) {
-            val += (cashFlows[i] || 0) / Math.pow(1 + mid, i);
+            val += (cashFlows[i] || 0) / Math.pow(1 + rate, i);
         }
-        if (Math.abs(val) < 1) { irr = mid; break; }
-        if (val > 0) low = mid; else high = mid;
-        irr = mid;
+        return val;
+    };
+    let irr = NaN;
+    let low = -0.99, high = 10.0;
+    let valLow = npvAt(low);
+    const valHigh = npvAt(high);
+    if (Number.isFinite(valLow) && Number.isFinite(valHigh) && valLow * valHigh < 0) {
+        for (let k = 0; k < 200; k++) {
+            const mid = (low + high) / 2;
+            const val = npvAt(mid);
+            irr = mid;
+            if (Math.abs(val) < 1 || (high - low) < 1e-9) break;
+            if ((val > 0) === (valLow > 0)) { low = mid; valLow = val; } else { high = mid; }
+        }
     }
 
     // LCOE Calculation
@@ -238,9 +258,9 @@ export const execute = (
         const escFactor = Math.pow(1 + (Number(escalation) || 0) / 100, i - 1);
         const discountFactor = Math.pow(1 + safeDiscountRate / 100, i);
 
-        // Annual Energy (kWh). We use Net Solar delivered (Used + Exported - Grid Charged)
+        // Annual Energy (kWh). We use net solar delivered (Used + Exported, excluding grid-origin battery discharge)
         // to reflect the true economic cost per useful kWh.
-        const netSolarUsed = (Number(customStats.totalUsed) || 0) + (Number(customStats.totalExported) || 0) - (Number(customStats.totalGridCharge) || 0);
+        const netSolarUsed = solarDeliveredKwh; // solar used directly + solar via battery + exported (excludes grid-charged energy)
         const annualGen = Math.max(0, netSolarUsed) * degFactor;
 
         // Annual Costs (O&M + Insurance + Replacement)
@@ -251,11 +271,11 @@ export const execute = (
 
         // Replacement Logic (Duplicate from Main Loop - ideally refactor but keeping inline for safety)
         const effectiveBatReplacePct = batteryReplaceCost !== undefined ? batteryReplaceCost : batteryReplaceCostPct;
-        if (safeBatteryCapex > 0 && i % (batteryLife || 10) === 0 && i < years) {
+        if (safeBatteryCapex > 0 && i % (batteryLife || 10) === 0 && i <= years) {
             replaceCost += safeBatteryCapex * ((effectiveBatReplacePct || 0) / 100) * escFactor;
         }
         const effectiveInvReplacePct2 = inverterReplaceCost !== undefined ? inverterReplaceCost : inverterReplaceCostPct;
-        if (i % (inverterLife || 20) === 0 && i < years) {
+        if (i % (inverterLife || 20) === 0 && i <= years) {
             replaceCost += systemCapexOnly * ((effectiveInvReplacePct2 || 0) / 100) * escFactor;
         }
 
@@ -272,7 +292,7 @@ export const execute = (
     return {
         npv,
         payback: paybackYear || years + 1,
-        irr: irr * 100,
+        irr: Number.isFinite(irr) ? irr * 100 : NaN, // NaN = IRR không xác định
         roi: safeCapex > 0 ? (cumulativeData[years] ? (cumulativeData[years].acc + equity) / safeCapex * 100 : 0) : 0,
         cumulativeData,
         firstYearRevenue: firstYearOperatingIncome,
